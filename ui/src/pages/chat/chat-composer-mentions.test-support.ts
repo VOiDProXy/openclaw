@@ -24,6 +24,7 @@ import {
   disposeComposer,
   renderComposerInto,
 } from "./chat-composer.test-support.ts";
+import type { HumanMentionAccess } from "./components/chat-composer-mention-menu.tsx";
 import { installChatComposerPickerDismissal } from "./components/chat-picker-overlay.ts";
 
 export const people: UsersMentionableResult = {
@@ -99,7 +100,17 @@ export function composerFixture(
     mentions = selected ?? updateHumanMentions(draft, next, mentions);
     draft = next;
   };
-  const props = createComposerProps();
+  let mentionAccess: HumanMentionAccess | undefined;
+  const props = createComposerProps({
+    registerHumanMentionAccess: (access) => {
+      mentionAccess = access;
+      return () => {
+        if (mentionAccess === access) {
+          mentionAccess = undefined;
+        }
+      };
+    },
+  });
   const renderCurrent = () => {
     if (retired) {
       return;
@@ -211,6 +222,8 @@ export function composerFixture(
     value: () => ({ draft, mentions }),
     expectValue: (expectedDraft: string, expectedMentions: readonly HumanMention[] = []) =>
       expect({ draft, mentions }).toEqual({ draft: expectedDraft, mentions: expectedMentions }),
+    mentionAccess: () => mentionAccess,
+    refresh: renderCurrent,
     replaceOwner: () => {
       ownerKey = "sender-two";
       renderCurrent();

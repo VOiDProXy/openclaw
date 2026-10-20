@@ -1,3 +1,5 @@
+import { resolveSimpleCompletionSelectionForAgent } from "../agents/simple-completion-selection.js";
+import type { OpenClawConfig } from "../config/types.openclaw.js";
 import { racePromiseWithAbortSignal } from "../infra/abort-signal.js";
 import { emitAgentEvent, emitAgentEventForOwner } from "../infra/agent-events.js";
 import { getAgentRunContextOwnership } from "../infra/agent-run-registry.js";
@@ -21,7 +23,19 @@ const REJECTED_OUTPUT_MAX_CHARS = 160;
 type PrepareModel = NonNullable<SessionObserverDeps["prepareModel"]>;
 type CompleteModel = NonNullable<SessionObserverDeps["completeModel"]>;
 
-export function reportSessionObserverDegradation(state: SessionObserverState, error: unknown) {
+export function reportSessionObserverDegradation(
+  state: SessionObserverState,
+  error: unknown,
+  cfg: OpenClawConfig,
+) {
+  const selection = resolveSimpleCompletionSelectionForAgent({
+    cfg,
+    agentId: state.agentId,
+    modelRef: state.utilityModelRef,
+    useUtilityModel: "required",
+    manifestPlugins: [],
+  });
+  const modelLabel = selection ? ` "${selection.provider}/${selection.modelId}"` : "";
   const notice = {
     runId: state.runId,
     sessionKey: state.sessionKey,
@@ -29,7 +43,7 @@ export function reportSessionObserverDegradation(state: SessionObserverState, er
     stream: "notice",
     data: {
       phase: "warning",
-      message: `Session observer assessments stopped for this run after utility model "${state.utilityModelRef}" failed repeatedly. To restore assessments, choose a capable utility model or add capable utilityModel.fallbacks.`,
+      message: `Session observer assessments stopped for this run after utility model${modelLabel} failed repeatedly. To restore assessments, choose a capable utility model or add capable utilityModel.fallbacks.`,
     },
   };
   const owner = getAgentRunContextOwnership(state.runId)?.exclusiveClaimId;

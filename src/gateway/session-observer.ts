@@ -417,7 +417,7 @@ export function createSessionObserver(deps: SessionObserverDeps): SessionObserve
           }
           state.consecutiveFailures += 1;
           if (state.consecutiveFailures >= MAX_CONSECUTIVE_FAILURES) {
-            reportSessionObserverDegradation(state, error);
+            reportSessionObserverDegradation(state, error, deps.getConfig());
             if (final || state.finalPending || state.terminalHealth) {
               retireTerminalState(state);
             } else {

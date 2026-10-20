@@ -43,7 +43,22 @@ it.each(["exact tool cap", "invalid schema"])(
     const completeModel = vi.fn(async () =>
       modelMessage({ headline: "Working", health: "on-track", planProgress: null }),
     );
-    const harness = createHarness({ prepareModel, completeModel });
+    const harness = createHarness({
+      prepareModel,
+      completeModel,
+      config: {
+        gateway: { controlUi: { sessionObserver: true } },
+        agents: {
+          defaults: {
+            utilityModel:
+              failure === "exact tool cap"
+                ? "openai/gpt-test@private-profile"
+                : "private-utility-alias@private-profile",
+            models: { "openai/gpt-test": { alias: "private-utility-alias" } },
+          },
+        },
+      },
+    });
     const owner = claimAgentRunContext(
       "run-1",
       { sessionKey: "agent:main:session-1", agentId: "main" },
@@ -64,6 +79,8 @@ it.each(["exact tool cap", "invalid schema"])(
       ]);
       expect(notices[0]?.data.message).toContain("choose a capable utility model");
       expect(notices[0]?.data.message).toContain("utilityModel.fallbacks");
+      expect(notices[0]?.data.message).not.toContain("private-profile");
+      expect(notices[0]?.data.message).not.toContain("private-utility-alias");
       const callsAtDisable = prepareModel.mock.calls.length + completeModel.mock.calls.length;
       await harness.observer.handleEventAsync(
         event({ stream: "tool", data: { phase: "start", name: "read", args: { path: "more" } } }),

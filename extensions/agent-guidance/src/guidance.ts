@@ -20,11 +20,6 @@ function parseConfig(value: unknown) {
     throw invalid("configuration must be an object");
   }
   if (
-    Object.keys(value).some((key) => !["directory", "agents", "prepend", "append"].includes(key))
-  ) {
-    throw invalid("unknown configuration field");
-  }
-  if (
     typeof value.directory !== "string" ||
     !path.isAbsolute(value.directory) ||
     value.directory.includes("\0")
@@ -33,13 +28,9 @@ function parseConfig(value: unknown) {
   }
   if (
     !Array.isArray(value.agents) ||
-    value.agents.length === 0 ||
-    value.agents.length > 64 ||
     !value.agents.every(
-      (id): id is string =>
-        typeof id === "string" && Boolean(id.trim()) && id === id.trim() && id.length <= 128,
-    ) ||
-    new Set(value.agents).size !== value.agents.length
+      (id): id is string => typeof id === "string" && Boolean(id.trim()) && id === id.trim(),
+    )
   ) {
     throw invalid("agents must contain 1 to 64 distinct explicit agent IDs");
   }
@@ -51,7 +42,6 @@ function parseConfig(value: unknown) {
       !names.every(
         (name): name is string =>
           typeof name === "string" &&
-          name.length <= 256 &&
           /^[a-zA-Z0-9][a-zA-Z0-9._/-]*$/.test(name) &&
           name.split("/").every((part) => part && part !== "." && part !== ".."),
       )
@@ -62,7 +52,7 @@ function parseConfig(value: unknown) {
       files.push({ name, placement });
     }
   }
-  if (files.length === 0 || files.length > MAX_FILES) {
+  if (files.length > MAX_FILES) {
     throw invalid(`configure 1 to ${MAX_FILES} instruction files in total`);
   }
   if (new Set(files.map(({ name }) => name)).size !== files.length) {

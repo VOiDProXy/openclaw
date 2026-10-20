@@ -72,21 +72,21 @@ describe("agent-guidance", () => {
   it.each([
     ["missing", undefined],
     ["array", []],
-    ["unknown field", { extra: true }],
     ["relative directory", { directory: "relative" }],
     ["NUL directory", { directory: "/bad\0" }],
     ["missing agents", { agents: undefined }],
-    ["empty agents", { agents: [] }],
     ["blank agent", { agents: [" "] }],
     ["padded agent", { agents: [" main"] }],
-    ["duplicate agent", { agents: ["main", "main"] }],
     ["non-string agent", { agents: [1] }],
-    ["long agent", { agents: ["a".repeat(129)] }],
-    ["too many agents", { agents: Array.from({ length: 65 }, (_, i) => `agent-${i}`) }],
-    ["no files", { append: [] }],
     ["null files", { append: null }],
     ["duplicate files", { prepend: ["instructions.md"] }],
-    ["too many files", { append: Array.from({ length: 9 }, (_, i) => `${i}.md`) }],
+    [
+      "too many files across placements",
+      {
+        prepend: Array.from({ length: 4 }, (_, i) => `before-${i}.md`),
+        append: Array.from({ length: 5 }, (_, i) => `after-${i}.md`),
+      },
+    ],
   ])("rejects %s configuration", (_name, extra) => {
     const value = extra === undefined || Array.isArray(extra) ? extra : config(extra);
     expect(() => loadGuidance(value)).toThrow("agent-guidance:");
@@ -104,7 +104,6 @@ describe("agent-guidance", () => {
     "https://host/file",
     "rules.md\0",
     "a/",
-    "a".repeat(257),
   ])("rejects unsafe file name %s", (name) =>
     expect(() => loadGuidance(config({ append: [name] }))).toThrow("relative file names"),
   );
@@ -172,8 +171,17 @@ describe("agent-guidance", () => {
 
   it("validates configuration with the native JSON schema", () => {
     expect(plugin.configSchema?.safeParse?.(config()).success).toBe(true);
-    expect(plugin.configSchema?.safeParse?.(config({ unknown: true })).success).toBe(false);
-    expect(plugin.configSchema?.safeParse?.(config({ agents: [] })).success).toBe(false);
+  });
+
+  it.each([
+    ["unknown field", { extra: true }],
+    ["empty agents", { agents: [] }],
+    ["duplicate agent", { agents: ["main", "main"] }],
+    ["long agent", { agents: ["a".repeat(129)] }],
+    ["too many agents", { agents: Array.from({ length: 65 }, (_, i) => `agent-${i}`) }],
+    ["long file name", { append: ["a".repeat(257)] }],
+  ])("rejects %s at the native schema boundary", (_name, extra) => {
+    expect(plugin.configSchema?.safeParse?.(config(extra)).success).toBe(false);
   });
 
   it.each([{}, { prepend: [] }, { append: [] }, { prepend: [], append: [] }])(
@@ -181,7 +189,6 @@ describe("agent-guidance", () => {
     (files) => {
       const value = { directory, agents: ["main"], ...files };
       expect(plugin.configSchema?.safeParse?.(value).success).toBe(false);
-      expect(() => loadGuidance(value)).toThrow("configure 1 to 8 instruction files in total");
     },
   );
 

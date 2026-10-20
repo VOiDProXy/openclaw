@@ -86,7 +86,10 @@ it("pauses for reduced motion and hidden documents, and cancels playback on remo
 it("draws current size and expression across animation frames and reduced-motion updates", async () => {
   const warning = vi.spyOn(console, "warn");
   const draw = vi.spyOn(mascotCanvas, "drawMascot").mockImplementation(() => {});
-  const context = { setTransform: vi.fn(), clearRect: vi.fn() };
+  const context: Pick<CanvasRenderingContext2D, "setTransform" | "clearRect"> = {
+    setTransform: vi.fn(),
+    clearRect: vi.fn(),
+  };
   // SAFETY: The vector renderer is stubbed; these are the only context operations used by the host.
   vi.spyOn(HTMLCanvasElement.prototype, "getContext").mockReturnValue(
     context as CanvasRenderingContext2D,

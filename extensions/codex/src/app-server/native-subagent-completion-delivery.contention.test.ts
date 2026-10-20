@@ -56,13 +56,12 @@ describe("native completion durable receipts", () => {
       retirement = parent.unregister();
       await entered.promise;
       observer = await f.register(client);
-      // Readiness drains the queued retirement. Native receipts can arrive while
-      // that drain is pending, so observe the receipt before awaiting readiness.
       observer.bindTurn("observer-turn");
       await client.notify(nativeCompletionNotification({ turnId: "observer-turn", result }));
       release.resolve();
-      await retirement;
+      // Restoration drains the retirement write, so release the test gate before awaiting it.
       await observer.ready;
+      await retirement;
       await observer.unregister();
       expect(await f.store.readNativeSubagentAssignments?.(f.identity, f.historyOwner())).toEqual(
         [],

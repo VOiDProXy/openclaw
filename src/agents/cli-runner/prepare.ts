@@ -1113,10 +1113,13 @@ async function prepareCliRunContextWithinReadFence(
       backend: backendResolved.config,
       workspaceDir,
       config: params.config,
-      toolOverrides: params.toolOverrides,
+      // The bridged catalog already applies configured-server overrides.
+      toolOverrides:
+        exclusiveMcp && !systemAgentMcpConfig
+          ? { ...params.toolOverrides, mcpServers: undefined, mcpToolsDeny: undefined }
+          : params.toolOverrides,
       agentDir,
-      // Claude's configured servers already live behind the bridge. Other
-      // restricted runs also exclude native servers that could bypass their cap.
+      // Bridged and restricted runs exclude native servers outside their catalog.
       ...(systemAgentMcpConfig
         ? { exclusiveConfig: systemAgentMcpConfig }
         : exclusiveMcp && loopbackServerConfig
@@ -1131,18 +1134,15 @@ async function prepareCliRunContextWithinReadFence(
             }
           : undefined,
       warn: (message) => cliBackendLog.warn(message),
-      ...(!systemAgentMcpConfig && !exclusiveMcp
-        ? {
-            nativeMcpPolicy: {
+      nativeMcpPolicy:
+        !systemAgentMcpConfig && !exclusiveMcp
+          ? {
               sessionId: params.sessionId,
-              ...(params.sessionKey ? { sessionKey: params.sessionKey } : {}),
+              sessionKey: params.sessionKey,
               capabilityProfile: nativeMcpCapabilityProfile,
-              ...(runtimeToolsAllowPolicy !== undefined
-                ? { runtimeToolsAllow: runtimeToolsAllowPolicy }
-                : {}),
-            },
-          }
-        : {}),
+              runtimeToolsAllow: runtimeToolsAllowPolicy,
+            }
+          : undefined,
     });
     const cleanupPreparedBackend = sequenceCliCleanups(
       preparedBackend.cleanup && (() => preparedBackend.cleanup?.()),

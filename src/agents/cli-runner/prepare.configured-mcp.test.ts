@@ -186,6 +186,10 @@ describe("configured MCP servers on CLI turns", () => {
               transport: "streamable-http",
               url: `http://127.0.0.1:${probeServer.port}/mcp`,
             },
+            openclaw: {
+              transport: "streamable-http",
+              url: `http://127.0.0.1:${probeServer.port}/mcp`,
+            },
           },
         },
       };
@@ -199,12 +203,14 @@ describe("configured MCP servers on CLI turns", () => {
           modelHasVision: false,
           sourceReplyDeliveryMode: "automatic",
           config,
+          toolOverrides: { mcpServers: { openclaw: false }, webSearch: false },
           ...(source === "run" ? { execOverrides: { host: "node" as const } } : {}),
         });
         try {
           expect(context.params.cliToolAvailability).toBeUndefined();
           expect(context.hostOwnedTools).toBeUndefined();
           const args = context.preparedBackend.backend.args ?? [];
+          expect(args[args.indexOf("--disallowedTools") + 1]?.split(",")).toContain("WebSearch");
           const bundle = JSON.parse(
             fs.readFileSync(args[args.indexOf("--mcp-config") + 1] ?? "", "utf-8"),
           ) as { mcpServers: Record<string, unknown> };
@@ -218,6 +224,7 @@ describe("configured MCP servers on CLI turns", () => {
             bundledTools: minted!.bundledTools,
           });
           const probe = scoped.tools.find((tool) => tool.name === "probe__echo");
+          expect(scoped.tools.some((tool) => tool.name === "openclaw__echo")).toBe(false);
           expect(probe).toBeDefined();
           expect(getTextContent(await probe!.execute("configured-mcp", { word: "pong" }))).toBe(
             "probe:pong",

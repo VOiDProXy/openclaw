@@ -5,8 +5,7 @@ import { detectMime } from "@openclaw/media-core/mime";
 import { parseControlUiPublicSessionShareUrl } from "@openclaw/session-url-contract/public-share";
 import { WIDGET_HTML_MAX_UTF8_BYTES } from "../../packages/gateway-protocol/src/schema/canvas.js";
 import { isCoreCanvasHostEnabled } from "../canvas/config.js";
-import { CANVAS_DOCUMENTS_PATH } from "../canvas/constants.js";
-import { parseCanvasDocumentHttpPath, readCanvasDocumentHtmlSource } from "../canvas/documents.js";
+import { readCanvasDocumentHtmlSource } from "../canvas/documents.js";
 import { resolveGatewayPublicOrigin } from "../config/gateway-public-origin.js";
 import type { OpenClawConfig } from "../config/types.openclaw.js";
 import { buildBoardWidgetContentSecurityPolicy } from "./board-sandbox.js";
@@ -21,7 +20,10 @@ import {
   readPublicSessionMessage,
   readPublicSessionWidget,
 } from "./control-ui-public-session-read.js";
-import { resolvePublicSessionShareToken } from "./control-ui-public-session-token.js";
+import {
+  resolvePublicSessionShareToken,
+  resolvePublicSessionWidgetToken,
+} from "./control-ui-public-session-token.js";
 import { resolveControlUiShareOrigin } from "./control-ui-share.js";
 import type { GatewayAttributedIngress } from "./ingress-attribution.js";
 import { withReadySessionRows } from "./session-row-prepared-read.js";
@@ -43,10 +45,14 @@ export async function serveControlUiPublicSessionMedia(params: {
   res.setHeader("X-Robots-Tag", "noindex, nofollow");
   res.setHeader("X-Content-Type-Options", "nosniff");
   res.setHeader("Referrer-Policy", "no-referrer");
+  const url = new URL(req.url ?? "/", "http://localhost");
+  const widgetToken = url.searchParams.get("widget");
   const unavailable = (status: 404 | 429 | 503, retryAfterSeconds = 1) => {
     const body =
       status === 404
-        ? "This public session is unavailable."
+        ? widgetToken !== null
+          ? "This widget is unavailable."
+          : "This public session is unavailable."
         : status === 429
           ? "Too many public session requests. Please retry later."
           : "This public session is temporarily unavailable. Please retry.";
@@ -59,28 +65,23 @@ export async function serveControlUiPublicSessionMedia(params: {
     res.end(req.method === "HEAD" ? undefined : body);
     return true as const;
   };
-  const url = new URL(req.url ?? "/", "http://localhost");
   const entryId = url.searchParams.get("entry") ?? "";
   const attachmentId = url.searchParams.get("attachment") ?? "";
-  const widgetId = url.searchParams.get("widget");
-  const queryKeys = widgetId === null ? ["token", "entry", "attachment"] : ["token", "widget"];
+  const queryKeys = widgetToken === null ? ["token", "entry", "attachment"] : ["widget"];
   const tokenUrl = new URL(`${basePath}/share/session`, url.origin);
   tokenUrl.searchParams.set("token", url.searchParams.get("token") ?? "");
   const share = parseControlUiPublicSessionShareUrl(tokenUrl, basePath);
   const publicOrigin = resolveGatewayPublicOrigin(config);
   if (
-    !share ||
+    (widgetToken === null && !share) ||
     url.href.length > 16384 ||
     queryKeys.some((key) => url.searchParams.getAll(key).length !== 1) ||
     [...url.searchParams.keys()].some((key) => !queryKeys.includes(key)) ||
-    (widgetId === null
+    (widgetToken === null
       ? entryId.length === 0 ||
         entryId.length > 1024 ||
         !/^(?:content|media)-(?:0|[1-9][0-9]{0,5})$/u.test(attachmentId)
-      : widgetId.length === 0 ||
-        widgetId.length > 128 ||
-        parseCanvasDocumentHttpPath(`${CANVAS_DOCUMENTS_PATH}/${widgetId}/index.html`)
-          ?.documentId !== widgetId) ||
+      : widgetToken.length === 0) ||
     (req.method !== "GET" && req.method !== "HEAD") ||
     !resolveControlUiShareOrigin(req, publicOrigin) ||
     !isSecurePublicSessionIngress(req, params.ingress, publicOrigin)
@@ -99,34 +100,38 @@ export async function serveControlUiPublicSessionMedia(params: {
     return unavailable(429, client.retryAfterSeconds);
   }
   try {
-    const locator = await resolvePublicSessionShareToken(share.token);
+    const widget = widgetToken === null ? null : await resolvePublicSessionWidgetToken(widgetToken);
+    const locator =
+      widgetToken === null ? await resolvePublicSessionShareToken(share!.token) : widget?.locator;
     if (!locator) {
       return unavailable(404);
     }
     if (!projection) {
       return unavailable(503);
     }
-    const tokenDigest = createHash("sha256").update(share.token).digest("base64url");
+    const tokenDigest = createHash("sha256")
+      .update(widgetToken ?? share!.token)
+      .digest("base64url");
     const result = await gate.run({
       kind: "transcript",
       publicationKey: locator.shareId,
       sessionKey: locator.sessionKey,
       config,
       requestKey: JSON.stringify(
-        widgetId === null
+        widgetToken === null
           ? ["media", tokenDigest, entryId, attachmentId]
-          : ["widget", tokenDigest, widgetId],
+          : ["widget", tokenDigest],
       ),
       work: async () => {
-        if (widgetId !== null) {
+        if (widget) {
           if (
             !isCoreCanvasHostEnabled(config) ||
-            !(await readPublicSessionWidget(config, locator, { docId: widgetId, projection }))
+            !(await readPublicSessionWidget(config, locator, { docId: widget.docId, projection }))
           ) {
             return null;
           }
           try {
-            const document = await readCanvasDocumentHtmlSource(widgetId, {
+            const document = await readCanvasDocumentHtmlSource(widget.docId, {
               maxBytes: WIDGET_HTML_MAX_UTF8_BYTES,
             });
             return document.cspSandbox === "scripts" ? document.html : null;
@@ -150,7 +155,7 @@ export async function serveControlUiPublicSessionMedia(params: {
     const representation = result.value;
     const body = representation?.body;
     const mime =
-      widgetId !== null
+      widgetToken !== null
         ? typeof body === "string" && isCoreCanvasHostEnabled(config)
           ? "text/html; charset=utf-8"
           : undefined
@@ -164,7 +169,7 @@ export async function serveControlUiPublicSessionMedia(params: {
         if (
           !isPublicSessionShareActive(config, locator, projection) ||
           !mime ||
-          (widgetId === null && !PUBLIC_IMAGE_TYPES.has(mime))
+          (widgetToken === null && !PUBLIC_IMAGE_TYPES.has(mime))
         ) {
           return unavailable(404);
         }
@@ -173,7 +178,7 @@ export async function serveControlUiPublicSessionMedia(params: {
         }
         res.setHeader("Content-Disposition", "inline");
         res.setHeader("Content-Type", mime);
-        if (widgetId !== null) {
+        if (widgetToken !== null) {
           res.setHeader(
             "Content-Security-Policy",
             `${buildBoardWidgetContentSecurityPolicy({ grantState: "none" })}; frame-ancestors 'self'`,

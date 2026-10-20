@@ -1,6 +1,9 @@
+import type { OpenClawConfig } from "../config/types.openclaw.js";
 import { buildCronCommandSummary } from "../cron/command-output-summary.js";
+import { resolveCronStoredDeliveryContext } from "../cron/delivery-context.js";
 import type { CronService } from "../cron/service.js";
 import type { CronServiceDeps } from "../cron/service/state.js";
+import { resolveCronSessionTargetSessionKey } from "../cron/session-target.js";
 import type { CronJob, CronPayload } from "../cron/types.js";
 import { withSystemEventOwner } from "../infra/system-event-ownership.js";
 import { enqueueSystemEventWithReceipt } from "../infra/system-events.js";
@@ -8,6 +11,50 @@ import { createDeferredCore } from "../shared/deferred.js";
 import { truncateUtf16WithEllipsis } from "../shared/text-truncate.js";
 import type { CronExitResult } from "./cron-exit-watchers.js";
 import type { CronStreamFireDisposition } from "./cron-stream-watchers.js";
+
+type ResolveCronTarget = (opts?: {
+  agentId?: string | null;
+  sessionKey?: string | null;
+  preserveUntargeted?: boolean;
+}) => {
+  runtimeConfig: OpenClawConfig;
+  agentId?: string;
+  sessionKey?: string;
+};
+
+export async function runGatewayCronSessionEvent(
+  request: Parameters<NonNullable<CronServiceDeps["runSessionEvent"]>>[0],
+  resolveTarget: ResolveCronTarget,
+) {
+  const { runCronSessionTurn } = await import("../cron/session-run.js");
+  const target = resolveTarget({
+    agentId: request.job.agentId,
+    sessionKey: resolveCronSessionTargetSessionKey(request.job.sessionTarget),
+  });
+  if (!target.agentId || !target.sessionKey) {
+    return { status: "error" as const, error: "Automation has no valid session destination" };
+  }
+  return await runCronSessionTurn({
+    ...request,
+    cfg: target.runtimeConfig,
+    agentId: target.agentId,
+    sessionKey: target.sessionKey,
+  });
+}
+
+export function resolveGatewayCronOriginDeliveryContext(
+  opts: Parameters<NonNullable<CronServiceDeps["resolveOriginDeliveryContext"]>>[0],
+  resolveTarget: ResolveCronTarget,
+) {
+  // Global scope removes the key's agent prefix; retain the selected store owner.
+  const { runtimeConfig, agentId, sessionKey } = resolveTarget({
+    ...opts,
+    preserveUntargeted: true,
+  });
+  return sessionKey
+    ? resolveCronStoredDeliveryContext({ cfg: runtimeConfig, agentId, sessionKey })
+    : undefined;
+}
 
 export function enqueueCronSystemEvent(
   text: string,

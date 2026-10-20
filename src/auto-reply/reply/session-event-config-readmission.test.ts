@@ -21,11 +21,13 @@ import { resolveAttemptWorkspaceSandbox } from "../../agents/workspace-sandbox.j
 import { setRuntimeConfigSnapshot } from "../../config/runtime-snapshot.js";
 import { replaceSessionEntry } from "../../config/sessions/session-accessor.js";
 import { readSessionEntryInWorker } from "../../config/sessions/session-entry-read-writable.js";
+import { makeCronJob } from "../../cron/delivery.test-helpers.js";
 import { peekSystemEventEntries, resetSystemEventsForTest } from "../../infra/system-events.js";
 import { drainGlobalSingletonLifecycleState } from "../../shared/global-singleton.js";
 import { openOpenClawStateDatabase } from "../../state/openclaw-state-db.js";
 import { withOpenClawTestState } from "../../test-utils/openclaw-test-state.js";
 import { normalizeSessionDeliveryState } from "../../utils/delivery-context.shared.js";
+import * as routedReplies from "./route-reply.js";
 import {
   captureSessionEventTargetForHost,
   enqueueSessionEventForHost,
@@ -138,8 +140,10 @@ it.for([
   "allow-control",
   "revoked-producer",
   "publication-storm",
+  "scheduled-control",
+  "scheduled-revoked",
 ] as const)(
-  "re-admits an accepted deferred exec completion after a config publication: %s",
+  "re-admits accepted deferred work after a config publication: %s",
   async (scenario, { signal }) => {
     await withOpenClawTestState(
       { label: "session-event-config-readmission", env: { OPENCLAW_TEST_FAST: "0" } },
@@ -162,7 +166,7 @@ it.for([
         });
         let sourceReferences = 1;
         const operatorAuthority =
-          scenario === "allow-control"
+          scenario === "allow-control" || scenario.startsWith("scheduled-")
             ? createAdmittedRunOperatorAuthority({
                 profileId: "original-guest",
                 scopes: ["operator.write"],
@@ -223,8 +227,33 @@ it.for([
             expectedTarget:
               scenario === "retained-ceiling" ? { ...target, toolsAllow: ["read"] } : target,
             abortSignal: signal,
+            ...(scenario.startsWith("scheduled-")
+              ? {
+                  scheduledAutomation: {
+                    job: {
+                      id: "scheduled-readmission",
+                      name: "Scheduled readmission",
+                      enabled: true,
+                      createdAtMs: 1,
+                      updatedAtMs: 1,
+                      schedule: { kind: "every" as const, everyMs: 60_000 },
+                      sessionTarget: `session:${scope.sessionKey}` as const,
+                      wakeMode: "now" as const,
+                      payload: { kind: "agentTurn" as const, message: "Background exec completed" },
+                      state: {},
+                    },
+                    admissionSource: "operator-schedule" as const,
+                    operatorAuthority,
+                    assertCurrent: () => {
+                      if (revoked) {
+                        throw new Error("Scheduled source retired");
+                      }
+                    },
+                  },
+                }
+              : {}),
             assertCurrent: () => {
-              if (revoked) {
+              if (revoked && !scenario.startsWith("scheduled-")) {
                 throw new Error("Background producer retired");
               }
               if (storming) {
@@ -245,11 +274,12 @@ it.for([
             tools: { deny: scenario === "published-deny" ? ["write"] : ["exec"] },
           });
           storming = scenario === "publication-storm";
-          revoked = scenario === "revoked-producer";
+          revoked = scenario === "revoked-producer" || scenario === "scheduled-revoked";
           releaseFirst.resolve();
           await expect(first.settled).resolves.toMatchObject({ status: "completed" });
-          const executes = scenario !== "publication-storm" && scenario !== "revoked-producer";
-          await expect(completion.settled).resolves.toMatchObject({
+          const executes = scenario !== "publication-storm" && !revoked;
+          const completedOutcome = await completion.settled;
+          expect(completedOutcome, completedOutcome.error).toMatchObject({
             status: executes ? "completed" : "failed",
             executionStarted: executes,
           });
@@ -259,7 +289,11 @@ it.for([
           }
           // Final effect: only the unrestricted control reaches the filesystem.
           const written = await fs.readFile(filePath, "utf8").catch(() => undefined);
-          expect(written).toBe(scenario === "allow-control" ? "written\n" : undefined);
+          expect(written).toBe(
+            scenario === "allow-control" || scenario === "scheduled-control"
+              ? "written\n"
+              : undefined,
+          );
           if (scenario === "allow-control") {
             const completed = expectDefined(
               await readSessionEntryInWorker(scope),
@@ -305,3 +339,79 @@ it.for([
     );
   },
 );
+
+it("records a scheduled transport failure separately from settled execution and usage", async ({
+  signal,
+}) => {
+  await withOpenClawTestState(
+    { label: "session-event-delivery", env: { OPENCLAW_TEST_FAST: "0" } },
+    async (state) => {
+      const config = completionConfig(state.workspaceDir);
+      setRuntimeConfigSnapshot(config);
+      await state.writeConfig(config);
+      openOpenClawStateDatabase();
+      const scope = { agentId: "main", sessionKey: "agent:main:scheduled-delivery" };
+      const route = { channel: "telegram", to: "-100001", accountId: "scheduled" };
+      await replaceSessionEntry(scope, {
+        sessionId: "scheduled-delivery",
+        lifecycleRevision: "original",
+        permissionMode: "full",
+        delivery: normalizeSessionDeliveryState({ context: route }),
+        updatedAt: Date.now(),
+      });
+      // Inject only this transport failure; sibling cases retain normal silent delivery.
+      using routeReply = vi.spyOn(routedReplies, "routeReply").mockResolvedValue({
+        ok: false,
+        delivered: false,
+        error: "transport unavailable",
+      });
+      runEmbeddedAgentMock.mockReset().mockImplementation(async (params) => {
+        await startRun(params);
+        return {
+          payloads: [{ text: "The report is complete." }],
+          meta: {
+            durationMs: 1,
+            agentMeta: {
+              sessionId: params.sessionId,
+              provider: "openai",
+              model: "gpt-5.6-sol",
+              usage: { input: 20, output: 5, cacheRead: 10, total: 35 },
+            },
+          },
+        };
+      });
+      const receipt = enqueueSessionEventForHost("Write the report", {
+        ...scope,
+        source: "cron",
+        expectedTarget: await captureSessionEventTargetForHost(scope.agentId, scope.sessionKey),
+        deliveryContext: route,
+        abortSignal: signal,
+        scheduledAutomation: {
+          job: makeCronJob({ sessionTarget: `session:${scope.sessionKey}` }),
+          admissionSource: "operator-schedule",
+          assertCurrent() {},
+        },
+      });
+      try {
+        await expect(receipt.settled).resolves.toMatchObject({
+          status: "completed",
+          executionStarted: true,
+          delivered: false,
+          deliveryAttempted: true,
+          deliveryError: "transport unavailable",
+          automationResult: {
+            provider: "openai",
+            model: "gpt-5.6-sol",
+            usage: { input_tokens: 20, output_tokens: 5, cache_read_tokens: 10, total_tokens: 35 },
+          },
+        });
+        expect(routeReply).toHaveBeenCalled();
+      } finally {
+        receipt.cancel();
+        await receipt.settled;
+        await drainGlobalSingletonLifecycleState("restart");
+        resetSystemEventsForTest();
+      }
+    },
+  );
+});

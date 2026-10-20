@@ -101,6 +101,10 @@ describe("CronService failure notification delivery", () => {
       });
       throw new Error("failure alert channel unavailable");
     });
+    const failRun = async () => ({
+      status: "error" as const,
+      error: "temporary upstream error",
+    });
     const cron = new CronService({
       scheduler: createTestGatewayScheduler(),
       storePath: store.storePath,
@@ -129,10 +133,8 @@ describe("CronService failure notification delivery", () => {
         );
       },
       sendCronFailureAlert,
-      runIsolatedAgentJob: async () => ({
-        status: "error",
-        error: "temporary upstream error",
-      }),
+      runIsolatedAgentJob: failRun,
+      runSessionEvent: failRun,
     });
     try {
       await cron.start();

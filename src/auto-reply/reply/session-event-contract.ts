@@ -1,7 +1,23 @@
 /** Host-owned event admission and settlement contracts; no live reply/Gateway imports. */
+import type {
+  AdmittedRunContext,
+  AdmittedRunOperatorAuthority,
+} from "../../agents/admitted-run-context.js";
+import type { MessagingToolSend } from "../../agents/embedded-agent-messaging.types.js";
+import type { EmbeddedAgentRunResult } from "../../agents/embedded-agent-runner/types.js";
 import type { SessionEntryCreationOperation } from "../../config/sessions/session-accessor.sqlite-entry-cache.types.js";
 import type { SessionEntry } from "../../config/sessions/types.js";
+import type {
+  CronAgentExecutionPhaseUpdate,
+  CronRunOutcome,
+  CronRunTelemetry,
+  CronStoredJob,
+} from "../../cron/types.js";
 import type { ExecRequestOwner } from "../../infra/exec-request-context.js";
+import type {
+  SourceDeliveryOutcome,
+  SourceDeliveryPlan,
+} from "../../infra/outbound/source-delivery-plan.js";
 import type { SystemEvent } from "../../infra/system-events.js";
 import type { UserTurnTranscriptRecorder } from "../../sessions/user-turn-transcript.types.js";
 import type { DeliveryContext } from "../../utils/delivery-context.types.js";
@@ -22,11 +38,17 @@ export type SessionEventOutcome = {
   executionStarted: boolean;
   delivered: boolean;
   summary?: string;
+  nextCheckMs?: number;
+  sourceDeliveryOutcome?: SourceDeliveryOutcome;
+  automationResult?: CronRunTelemetry & Pick<CronRunOutcome, "replyDisposition" | "diagnostics">;
+  /** Recorded controller restart outcome, before the error is flattened. */
+  interruptedByRestart?: boolean;
   error?: string;
   /** Admission policy decides whether a durable producer may retry this refusal. */
   retryable?: boolean;
   deliveryAttempted?: boolean;
   deliveryAmbiguous?: boolean;
+  deliveryError?: string;
   deliverySuppressionReason?: NormalizeReplySkipReason;
   admissionDeferred?: boolean;
 };
@@ -73,6 +95,7 @@ export type SessionEventOptions = {
   onAdopted?: () => void | Promise<void>;
   /** Transfer exact queued occurrences into one ordinary turn without duplicating them. */
   occurrences?: readonly SystemEvent[];
+  scheduledAutomation?: ScheduledSessionAutomation;
   /** Failed promotion retains an existing passive occurrence until ordinary adoption begins. */
   preserveOccurrenceOnRejection?: true;
   /** Internal: policy-change re-admission depth, bounded to stop publication storms. */
@@ -87,6 +110,33 @@ export type SessionEventSourcePolicy = Readonly<
   Pick<SessionEventTarget, "toolsAllow" | "settings">
 >;
 
+/** Cron-owned snapshot and live occurrence fence shared with ordinary reply admission. */
+export type ScheduledSessionAutomation = {
+  job: CronStoredJob;
+  operatorAuthority?: AdmittedRunOperatorAuthority;
+  /** Original Control UI admin classification, revalidated by the restored operator source. */
+  controlUiAdmin?: true;
+  admissionSource: NonNullable<AdmittedRunContext["admissionSource"]>;
+  executionIdentity?: import("../../cron/service/state.js").CronExecutionIdentityAdmission;
+  deliveryAttemptFence?:
+    | import("../../cron/delivery-attempt-fence.js").CronCompletionDeliveryFence
+    | null;
+  assertCurrent: () => void;
+  /** Refresh durable occurrence authority before admission or an asynchronous effect. */
+  prepare?: () => Promise<void>;
+  onExecutionStarted?: (info: {
+    runId: string;
+    sessionId?: string;
+    sessionKey: string;
+    provider?: string;
+    model?: string;
+    isFallback?: boolean;
+  }) => void;
+  onExecutionPhase?: (info: CronAgentExecutionPhaseUpdate) => void;
+  beforeDeliver?: () => Promise<void>;
+  sourceDelivery?: SourceDeliveryPlan;
+};
+
 /** Producer callbacks stay bound to the queued occurrence, not a later dispatcher. */
 export type SessionEventExecution = {
   /** Admit the prepared input to the occurrence's durable custody before queueing. */
@@ -100,10 +150,22 @@ export type SessionEventExecution = {
   /** Bind the original absent target to the normal session writer before its first commit. */
   bindSessionCreation?: (operation: SessionEntryCreationOperation) => () => void;
   beforeStart?: () => Promise<void>;
+  /** Scheduled source admission precedes native preparation and lifecycle start. */
+  beforeScheduledStart?: (runId: string) => Promise<void>;
   onFailed?: (error: unknown) => void;
   onSuppressed?: (
     reason: "send-policy" | "room-event" | "silent" | "message-tool-only" | "aborted",
   ) => void;
   onStarted: (runId: string) => void;
-  onTerminal: (runId: string, outcome: "completed" | "failed" | "aborted") => void | Promise<void>;
+  onTerminal: (
+    runId: string,
+    outcome: "completed" | "failed" | "aborted",
+    deliveryEvidence?: {
+      didSendViaMessagingTool?: boolean;
+      messagingToolSentTargets?: MessagingToolSend[];
+      meta?: EmbeddedAgentRunResult["meta"];
+      payloads?: EmbeddedAgentRunResult["payloads"];
+      resolved?: { provider: string; model: string };
+    },
+  ) => void | Promise<void>;
 };

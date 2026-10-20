@@ -693,6 +693,7 @@ async function prepareCliRunContextWithinReadFence(
   const canUseGatewayTools = !nodeClaudePlacement && !skipsTurnPreparation && !systemAgentMcpConfig;
   const bundleMcpEnabled =
     canUseGatewayTools && backendResolved.bundleMcp && params.disableTools !== true;
+  const bridgeConfiguredMcp = bundleMcpEnabled && backendResolved.id === "claude-cli";
   let mcpLoopbackRuntime = bundleMcpEnabled ? getActiveMcpLoopbackRuntime() : undefined;
   if (bundleMcpEnabled && !mcpLoopbackRuntime) {
     try {
@@ -747,12 +748,24 @@ async function prepareCliRunContextWithinReadFence(
       }
     : undefined;
   params.assertCurrent?.();
-  // Exclusive runs cannot hand configured MCP servers to the CLI. Serve them
-  // through the loopback bridge so every turn lists the same tools.
+  const resolveNativeMcpCapabilityProfile = () =>
+    mcp.resolveCliNativeMcpPolicy(params, {
+      config: runConfig,
+      policySessionKey,
+      policyAgentId,
+      modelProvider,
+      modelId,
+      workspaceDir,
+      cwd,
+      runtimeToolsAllowPolicy,
+    });
+  // Keep configured MCP on the bridge even when local Claude retains native
+  // tools for node exec. Exact tool selection remains a separate policy.
   await using loopbackBundleMcp =
     mcpLoopbackRuntime &&
     mcpContextBase &&
-    (params.cliToolAvailability !== undefined ||
+    (bridgeConfiguredMcp ||
+      params.cliToolAvailability !== undefined ||
       shouldMaterializeRuntimePolicy ||
       promptBuildRestrictsTools)
       ? await prepareCliLoopbackBundleMcp({
@@ -761,17 +774,7 @@ async function prepareCliRunContextWithinReadFence(
           workspaceDir,
           agentId: sessionAgentId,
           agentDir,
-          resolveCapabilityProfile: () =>
-            mcp.resolveCliNativeMcpPolicy(params, {
-              config: runConfig,
-              policySessionKey,
-              policyAgentId,
-              modelProvider,
-              modelId,
-              workspaceDir,
-              cwd,
-              runtimeToolsAllowPolicy,
-            }),
+          resolveCapabilityProfile: resolveNativeMcpCapabilityProfile,
           runtimeToolsAllow: runtimeToolsAllowPolicy,
         })
       : undefined;
@@ -1102,16 +1105,8 @@ async function prepareCliRunContextWithinReadFence(
       rawLoopbackServerConfig && backendResolved.bundleMcpMode === "claude-config-file"
         ? applyClaudeManagedMcpTimeout(rawLoopbackServerConfig)
         : rawLoopbackServerConfig;
-    const nativeMcpCapabilityProfile = await mcp.resolveCliNativeMcpPolicy(params, {
-      config: runConfig,
-      policySessionKey,
-      policyAgentId,
-      modelProvider,
-      modelId,
-      workspaceDir,
-      cwd,
-      runtimeToolsAllowPolicy,
-    });
+    const exclusiveMcp = exclusiveTools || bridgeConfiguredMcp;
+    const nativeMcpCapabilityProfile = await resolveNativeMcpCapabilityProfile();
     const preparedBackend = await prepareCliBundleMcpConfig({
       enabled: bundleMcpEnabled || systemAgentMcpConfig !== undefined,
       mode: backendResolved.bundleMcpMode,
@@ -1120,14 +1115,14 @@ async function prepareCliRunContextWithinReadFence(
       config: params.config,
       toolOverrides: params.toolOverrides,
       agentDir,
-      // Restricted runs serve only the loopback server; merging user/plugin
-      // MCP servers would let the run reach tools outside its allowlist.
+      // Claude's configured servers already live behind the bridge. Other
+      // restricted runs also exclude native servers that could bypass their cap.
       ...(systemAgentMcpConfig
         ? { exclusiveConfig: systemAgentMcpConfig }
-        : exclusiveTools && loopbackServerConfig
+        : exclusiveMcp && loopbackServerConfig
           ? { exclusiveConfig: loopbackServerConfig }
           : {}),
-      additionalConfig: exclusiveTools ? undefined : loopbackServerConfig,
+      additionalConfig: exclusiveMcp ? undefined : loopbackServerConfig,
       env:
         mcpLoopbackRuntime && mcpClientGrant
           ? {
@@ -1136,7 +1131,7 @@ async function prepareCliRunContextWithinReadFence(
             }
           : undefined,
       warn: (message) => cliBackendLog.warn(message),
-      ...(!systemAgentMcpConfig && !exclusiveTools
+      ...(!systemAgentMcpConfig && !exclusiveMcp
         ? {
             nativeMcpPolicy: {
               sessionId: params.sessionId,

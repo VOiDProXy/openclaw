@@ -10,7 +10,11 @@ const unsupportedBackend = {
   config: { command: "fixture" },
   nativeToolMode: "always-on",
   ownsNativeCompaction: false,
-  runtimeArtifact: { kind: "bundled-package-tree", packageName: "@fixture/cli", entrypoint: "cli" },
+  runtimeArtifact: {
+    kind: "bundled-package-tree",
+    packageName: "@fixture/cli",
+    entrypoint: "command",
+  },
 } satisfies CliBackendPlugin;
 
 afterEach(() => cliBackendsTesting.resetDepsForTest());

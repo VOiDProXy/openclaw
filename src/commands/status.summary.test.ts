@@ -516,7 +516,7 @@ describe("getStatusSummary", () => {
       runtimeArtifact: {
         kind: "bundled-package-tree",
         packageName: "@fixture/cli",
-        entrypoint: "cli",
+        entrypoint: "command",
       },
     };
     const setup = vi

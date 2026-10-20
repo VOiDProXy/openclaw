@@ -261,6 +261,35 @@ suite.define(() => {
     await expect
       .poll(() => page.getByLabel("Time", { exact: true }).getAttribute("min"))
       .toBe("09:00");
+    await page.getByLabel("Date", { exact: true }).evaluate((input) => {
+      if (!(input instanceof HTMLInputElement)) {
+        throw new Error("Expected native date input");
+      }
+      input.value = "2026-10-21";
+      input.dispatchEvent(new InputEvent("input", { bubbles: true }));
+    });
+    await applyMessages(page.mainFrame(), [
+      {
+        version: "v0.9",
+        updateComponents: {
+          surfaceId: "main",
+          components: [
+            {
+              id: "when",
+              component: "DateTimeInput",
+              label: "Calendar refreshed",
+              value: { path: "/when" },
+              enableDate: true,
+              enableTime: true,
+              min: "2026-10-19T09:00:00",
+              max: "2026-10-22T17:00:00",
+            },
+          ],
+        },
+      },
+    ]);
+    await page.getByText("Calendar refreshed", { exact: true }).waitFor();
+    expect(await page.getByLabel("Date", { exact: true }).inputValue()).toBe("2026-10-21");
     await page.evaluate(() => Reflect.get(globalThis, "openclawA2UI").reset());
     await expect.poll(() => page.locator("a2ui-surface").count()).toBe(0);
     expect(errors).toEqual([]);

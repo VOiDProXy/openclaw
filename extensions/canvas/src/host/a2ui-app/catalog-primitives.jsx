@@ -1,4 +1,20 @@
-import { onSettled } from "solid-js";
+import { createEffect, createMemo, onSettled } from "solid-js";
+
+/** Commit-on-change fields keep their native draft when unrelated props change. */
+export function catalogInputValue(read) {
+  let field;
+  const value = createMemo(read);
+  const write = (next) => {
+    if (field && field.value !== next) {
+      field.value = next;
+    }
+  };
+  createEffect(value, write);
+  return (element) => {
+    field = element;
+    write(value());
+  };
+}
 
 /** Both dialects keep their catalog markup; the native dialog owns focus and dismissal. */
 export function CatalogDialog(props) {

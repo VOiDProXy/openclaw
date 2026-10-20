@@ -20,7 +20,7 @@ import {
   createUniqueId,
   onSettled,
 } from "solid-js";
-import { CatalogDialog } from "./catalog-primitives.jsx";
+import { CatalogDialog, catalogInputValue } from "./catalog-primitives.jsx";
 import { catalogStyles } from "./catalog-v0.9-styles.js";
 
 // Only the headless schemas/functions reach the bundle. No universal element is registered.
@@ -285,6 +285,8 @@ function DateTimeInput(props) {
   const date = () => (raw().includes("-") ? raw().split("T")[0].slice(0, 10) : "");
   const time = () =>
     (raw().includes("T") ? raw().split("T")[1] : raw().includes(":") ? raw() : "").slice(0, 5);
+  const dateValue = catalogInputValue(date);
+  const timeValue = catalogInputValue(time);
   const dateEnabled = () => props.data.enableDate ?? true;
   const timeEnabled = () => props.data.enableTime ?? false;
   const dateBound = (key) => String(props.value(key) ?? "").split("T")[0] || undefined;
@@ -327,7 +329,7 @@ function DateTimeInput(props) {
             aria-label="Date"
             min={dateBound("min")}
             max={dateBound("max")}
-            value={date()}
+            ref={dateValue}
             onChange={changeDate}
           />
         </Show>
@@ -338,7 +340,7 @@ function DateTimeInput(props) {
             aria-label="Time"
             min={timeBound("min")}
             max={timeBound("max")}
-            value={time()}
+            ref={timeValue}
             onChange={changeTime}
           />
         </Show>

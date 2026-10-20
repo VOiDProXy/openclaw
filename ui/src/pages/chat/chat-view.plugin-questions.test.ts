@@ -1,6 +1,6 @@
 /* @vitest-environment jsdom */
 
-import { createComponent } from "solid-js";
+import { createComponent, createSignal } from "solid-js";
 import { afterEach, beforeEach, expect, it, onTestFinished, vi } from "vitest";
 import type {
   ControlUiHost,
@@ -86,18 +86,36 @@ function createPluginChat(
     },
   } as unknown as ApplicationContext;
   const provider = document.body.appendChild(createApplicationContextProvider(context));
+  let current: ChatProps;
+  let update: ((next: ChatProps) => void) | undefined;
   function render(overrides: Partial<ChatProps>) {
     const props = createChatProps({ sessionKey: "agent:main:main", ...overrides });
-    const view = mountSolid(() => createComponent(ChatView, { props }), {
-      container: provider,
-      wrapper: createSolidApplicationContextProvider(context).wrapper,
-    });
-    onTestFinished(() => {
-      view.unmount();
-      props.transcript.dispose();
-      lifetime.abort();
-      provider.remove();
-    });
+    current = props;
+    if (update) {
+      update(props);
+    } else {
+      const view = mountSolid(
+        () => {
+          const [value, setValue] = createSignal(props);
+          update = (next) => setValue(() => next);
+          return createComponent(ChatView, {
+            get props() {
+              return value();
+            },
+          });
+        },
+        {
+          container: provider,
+          wrapper: createSolidApplicationContextProvider(context).wrapper,
+        },
+      );
+      onTestFinished(() => {
+        view.unmount();
+        current.transcript.dispose();
+        lifetime.abort();
+        provider.remove();
+      });
+    }
     flush();
     props.transcript.start();
     props.transcript.update();

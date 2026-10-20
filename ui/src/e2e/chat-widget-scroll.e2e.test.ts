@@ -50,8 +50,9 @@ async function swipe(
     page.frames().map((frame) =>
       frame.evaluateHandle(() => {
         const state = { time: null as number | null };
-        const record = (event: TouchEvent) => {
-          state.time = performance.timeOrigin + event.timeStamp;
+        // The gesture carries synthetic timestamps; compare release on the scroll-event clock.
+        const record = () => {
+          state.time = performance.timeOrigin + performance.now();
         };
         window.addEventListener("touchend", record, { capture: true, once: true, passive: true });
         return {
@@ -64,17 +65,27 @@ async function swipe(
   try {
     // Use Chromium's touch emulator on every platform; synthetic scroll gestures
     // bypass Aura's touch recognizer. Keep layout reads out of the input sequence.
+    // Fling velocity comes from event timestamps: unstamped events take CDP arrival
+    // times, and a slow round trip before touchEnd reads as a stopped finger (no fling).
+    const timestamp = Date.now() / 1000;
+    const stepSeconds = 0.016;
     await cdp.send("Input.dispatchTouchEvent", {
       type: "touchStart",
       touchPoints: [{ ...point, id: 0 }],
+      timestamp,
     });
     for (let step = 1; step <= 12; step++) {
       await cdp.send("Input.dispatchTouchEvent", {
         type: "touchMove",
         touchPoints: [{ x: point.x, y: point.y + (direction * distance * step) / 12, id: 0 }],
+        timestamp: timestamp + step * stepSeconds,
       });
     }
-    await cdp.send("Input.dispatchTouchEvent", { type: "touchEnd", touchPoints: [] });
+    await cdp.send("Input.dispatchTouchEvent", {
+      type: "touchEnd",
+      touchPoints: [],
+      timestamp: timestamp + 13 * stepSeconds,
+    });
     const releaseTimes = await Promise.all(
       releases.map((release) => release.evaluate(({ state }) => state.time)),
     );

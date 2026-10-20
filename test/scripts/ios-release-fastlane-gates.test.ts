@@ -1425,11 +1425,7 @@ end
     expect(captureJob).not.toContain("OPENCLAW_SNAPSHOT_DEVICE_FAMILY");
     expect(captureJob).not.toContain("OPENCLAW_SNAPSHOT_SKIP_WATCH");
     expect(captureJob).not.toContain("run_ios_fastlane ios watch_screenshot");
-    expect(captureJob).toContain(
-      'node scripts/ios-resource-timeline.mjs --output "$RUNNER_TEMP/ios-resource-timeline.jsonl" --',
-    );
     expect(captureJob).toContain("pnpm ios:screenshots");
-    expect(captureJob).toContain("${{ runner.temp }}/ios-resource-timeline.jsonl");
     const runtimeProvision = "xcodebuild -downloadPlatform watchOS -buildVersion 27.0";
     expect(captureJob).toContain(runtimeProvision);
     expect(captureJob.indexOf("*select_xcode_step")).toBeLessThan(

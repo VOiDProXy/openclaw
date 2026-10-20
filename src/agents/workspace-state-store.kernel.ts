@@ -213,7 +213,7 @@ export function registerWorkspaceStateAliasIdentitiesInTransaction(params: {
       params.database.db,
       kysely.insertInto("workspace_path_aliases").values(missing),
     );
-    workspaceStatePublication.stagePostimages(params.database.db, [true]);
+    workspaceStatePublication.stageDeletions(params.database.db, ["aliases"]);
   }
 }
 
@@ -390,7 +390,6 @@ export function replaceWorkspaceAttestationInDatabase(
       })
       .onConflict((conflict) => conflict.column("workspace_key").doUpdateSet(values)),
   );
-  workspaceStatePublication.stagePostimages(database.db, [true]);
   const committedHashes = snapshot.attestation?.generatedHashes;
   if (
     committedHashes?.size !== params.generatedHashes.size ||
@@ -421,10 +420,12 @@ export function replaceWorkspaceAttestationInDatabase(
     aliases: resolution.aliases,
     updatedAtMs,
   });
-  return {
+  const attestation = {
     attestedAtMs: params.attestedAtMs,
     generatedHashes: new Map(sortedHashes),
   };
+  workspaceStatePublication.stagePostimages(database.db, [{ ...snapshot, attestation }]);
+  return attestation;
 }
 
 export function deleteWorkspaceStateRowsInDatabase(
@@ -483,7 +484,7 @@ export function deleteWorkspaceStateRowsInDatabase(
       kysely.deleteFrom(table).where("workspace_key", "=", workspaceKey),
     );
   }
-  workspaceStatePublication.stagePostimages(database.db, [true]);
+  workspaceStatePublication.stageDeletions(database.db, [workspaceKey]);
 }
 
 export function recentWorkspaceAttestation(

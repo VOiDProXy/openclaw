@@ -72,7 +72,7 @@ function deleteWorkspace(
         .deleteFrom("workspace_path_aliases")
         .where("alias_key", "=", lexicalAlias.workspaceKey),
     );
-    workspaceStatePublication.stagePostimages(database.db, [true]);
+    workspaceStatePublication.stageDeletions(database.db, ["aliases"]);
     storedIdentity = undefined;
   }
   const identity =
@@ -125,13 +125,15 @@ export function mergeWorkspaceSetupStateInDatabase(
       .values({ workspace_key: identity.workspaceKey, ...values })
       .onConflict((conflict) => conflict.column("workspace_key").doUpdateSet(values)),
   );
-  workspaceStatePublication.stagePostimages(database.db, [true]);
   registerWorkspaceStateAliasIdentitiesInTransaction({
     database,
     identity,
     aliases: resolution.aliases,
     updatedAtMs: nowMs,
   });
+  workspaceStatePublication.stagePostimages(database.db, [
+    { ...snapshot, setupExists: true, setupUpdatedAtMs: nowMs, setup: merged },
+  ]);
   return merged;
 }
 

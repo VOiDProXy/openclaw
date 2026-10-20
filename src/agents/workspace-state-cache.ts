@@ -24,15 +24,29 @@ workspaceStatePublication.subscribeFacts((change) => {
   }
   const identity = change.kind === "unknown" ? change.identity : change.receipt.source.identity;
   for (const [key, store] of stores) {
-    if (store.identity === identity) {
-      stores.delete(key);
+    if (store.identity !== identity) {
+      continue;
     }
+    if (change.kind === "unknown" || change.receipt.facts.has("aliases")) {
+      stores.delete(key);
+      continue;
+    }
+    for (const [aliasKey, snapshot] of store.snapshots) {
+      const fact = change.receipt.facts.get(snapshot.identity.workspaceKey);
+      if (fact?.kind === "postimage") {
+        store.snapshots.set(aliasKey, fact.value);
+      } else if (fact) {
+        store.snapshots.delete(aliasKey);
+      }
+    }
+    // An in-flight read must not overwrite the committed postimage.
+    stores.set(key, { ...store });
   }
 });
 
 registerOpenClawStatePathCacheInvalidation(stores);
 
-/** A workspace write invalidates the whole small projection, including alias resolution. */
+/** Owning writes publish snapshots; alias changes retire the resolution cache. */
 export async function readCachedWorkspaceStateSnapshot(
   context: OpenClawStateWorkerContext,
   aliasKey: string,

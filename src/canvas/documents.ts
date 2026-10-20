@@ -142,10 +142,9 @@ async function pruneCanvasDocumentsForScope(params: {
   );
 }
 
-export function resolveCanvasHttpPathToLocalPath(
+export function parseCanvasDocumentHttpPath(
   requestPath: string,
-  options?: { stateDir?: string },
-): string | null {
+): { documentId: string; entrypoint: string } | null {
   const trimmed = requestPath.trim();
   const prefix = `${CANVAS_DOCUMENTS_PATH}/`;
   if (!trimmed.startsWith(prefix)) {
@@ -162,16 +161,23 @@ export function resolveCanvasHttpPathToLocalPath(
       return null;
     }
     const documentId = normalizeCanvasDocumentId(rawDocumentId);
-    const normalizedEntrypoint = normalizeLogicalPath(entrySegments.join("/"));
-    const documentsDir = resolveCanvasDocumentsDir(options?.stateDir);
-    const candidatePath = path.resolve(documentsDir, documentId, normalizedEntrypoint);
-    if (!candidatePath.startsWith(`${documentsDir}${path.sep}`)) {
-      return null;
-    }
-    return candidatePath;
+    return { documentId, entrypoint: normalizeLogicalPath(entrySegments.join("/")) };
   } catch {
     return null;
   }
+}
+
+export function resolveCanvasHttpPathToLocalPath(
+  requestPath: string,
+  options?: { stateDir?: string },
+): string | null {
+  const parsed = parseCanvasDocumentHttpPath(requestPath);
+  if (!parsed) {
+    return null;
+  }
+  const documentsDir = resolveCanvasDocumentsDir(options?.stateDir);
+  const candidatePath = path.resolve(documentsDir, parsed.documentId, parsed.entrypoint);
+  return candidatePath.startsWith(`${documentsDir}${path.sep}`) ? candidatePath : null;
 }
 
 export async function createCanvasDocument(

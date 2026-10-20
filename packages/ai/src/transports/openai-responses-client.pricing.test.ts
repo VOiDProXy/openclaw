@@ -63,6 +63,7 @@ function completedResponse(
   serviceTier: string | null | undefined,
   cachedTokens = 0,
   cacheWriteTokens = 0,
+  cacheWriteDetails?: { ttl_30m_tokens: number; ttl_12h_tokens: number },
 ): SdkResponse {
   return {
     data: (async function* () {
@@ -87,6 +88,7 @@ function completedResponse(
             input_tokens_details: {
               cached_tokens: cachedTokens,
               cache_write_tokens: cacheWriteTokens,
+              cache_write_tokens_details: cacheWriteDetails,
             },
             output_tokens: 1_000_000,
             total_tokens: 2_000_000,
@@ -141,6 +143,46 @@ describe("managed Responses transport service-tier pricing", () => {
       expect(result.usage.cost.input).toBe(0);
       expect(result.usage.cost.cacheWrite).toBeCloseTo(expectedWrite, 6);
       expect(result.usage.cost.total).toBeCloseTo(10 + expectedWrite, 6);
+    },
+  );
+
+  it.each([
+    { route: "managed", ttl: "12h", extended: 4000, expectedWrite: 0.0275, expectedInput: 1.978 },
+    { route: "simple", ttl: "12h", extended: 4000, expectedWrite: 0.0275, expectedInput: 1.978 },
+    { route: "managed", ttl: "30m", extended: 4000, expectedWrite: 0.0275, expectedInput: 1.978 },
+    { route: "simple", ttl: "30m", extended: 4000, expectedWrite: 0.0275, expectedInput: 1.978 },
+    { route: "managed", ttl: "12h", extended: 0, expectedWrite: 0.0075, expectedInput: 1.986 },
+    { route: "simple", ttl: "12h", extended: 0, expectedWrite: 0.0075, expectedInput: 1.986 },
+  ] as const)(
+    "prices reported lifetime buckets on $route despite the $ttl request default: $extended extended tokens",
+    async ({ route, ttl, extended, expectedWrite, expectedInput }) => {
+      sseState.outcomes.push(
+        completedResponse("default", 4000, 3000 + extended, {
+          ttl_30m_tokens: 3000,
+          ttl_12h_tokens: extended,
+        }),
+      );
+      const pricedModel = {
+        ...model,
+        id: "gpt-6.1-sol",
+        cost: { input: 2, output: 10, cacheRead: 0.1, cacheWrite: 2.5 },
+      };
+      const streamFn =
+        route === "managed"
+          ? createOpenAIResponsesTransportStreamFn()
+          : streamSimpleOpenAIResponses;
+      const stream = await streamFn(
+        pricedModel,
+        { messages: [] },
+        { apiKey: "test-key", promptCacheTtl: ttl },
+      );
+      const result = await stream.result();
+      expect(result.stopReason).toBe("stop");
+      expect(result.usage.cacheWrite).toBe(3000 + extended);
+      expect(result.usage.cost.cacheWrite).toBeCloseTo(expectedWrite, 10);
+      expect(result.usage.cost.input).toBeCloseTo(expectedInput, 10);
+      expect(result.usage.cost.cacheRead).toBeCloseTo(0.0004, 10);
+      expect(result.usage.cost.total).toBeCloseTo(expectedInput + 10 + 0.0004 + expectedWrite, 10);
     },
   );
 

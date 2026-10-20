@@ -256,6 +256,11 @@ breakpoints, and routing still matter. It does not change OpenAI's maximum
 data-retention policy. This is separate from older models' `prompt_cache_retention`
 (`in_memory` / `24h`).
 
+When OpenAI reports `input_tokens_details.cache_write_tokens_details`, cost
+estimates price its `ttl_30m_tokens` and `ttl_12h_tokens` separately, including
+breakpoint overrides of the request default. Compatible endpoints without a
+coherent breakdown retain an estimate based on the requested lifetime.
+
 ### Amazon Bedrock
 
 - Anthropic Claude model refs (`amazon-bedrock/*anthropic.claude*`, plus AWS system inference profile prefixes `us.`/`eu.`/`global.anthropic.claude*`) support explicit `cacheRetention` pass-through.

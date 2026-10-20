@@ -53,6 +53,22 @@ type CliRuntimeModelBackendBinding = {
   runtime: string;
 };
 
+/** Exact caps require both a selectable tool surface and its declared execution adapter. */
+export function cliBackendSupportsExactToolAvailability(
+  backend: Pick<
+    CliBackendPlugin,
+    "nativeToolMode" | "toolAvailabilityEnforcement" | "resolveExecutionArgs" | "prepareExecution"
+  >,
+): boolean {
+  return (
+    backend.nativeToolMode === "selectable" &&
+    ((backend.toolAvailabilityEnforcement === "execution-args" &&
+      backend.resolveExecutionArgs !== undefined) ||
+      (backend.toolAvailabilityEnforcement === "prepare-execution" &&
+        backend.prepareExecution !== undefined))
+  );
+}
+
 function resolveCliBackendModelProvider(
   backend: Pick<CliBackendPlugin, "modelProvider">,
 ): string | undefined {

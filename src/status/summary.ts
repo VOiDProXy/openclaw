@@ -53,6 +53,7 @@ import {
   type PreparedStatusSessionStores,
 } from "./session-stores.js";
 import type { HeartbeatStatus, SessionStatus } from "./types.js";
+import { collectUtilityModelWarnings } from "./utility-model-warnings.js";
 
 const channelSummaryModuleLoader = createLazyImportLoader(
   () => import("../infra/channel-summary.js"),
@@ -472,6 +473,7 @@ export async function prepareStatusSummary(
         await import("../infra/database-engine/admitted-diagnostics.js")
       ).describeAdmittedDatabaseStores(cfg)
     : undefined;
+  const utilityModelWarnings = includeSensitive ? collectUtilityModelWarnings(cfg) : [];
   return {
     publish() {
       const publishedStores = sessionStores.publish();
@@ -547,6 +549,7 @@ export async function prepareStatusSummary(
           startupMigrationWarning: readStartupMigrationWarning(includeSensitive),
           startupRecoveryWarning: readStartupRecoveryWarning(includeSensitive),
           installationReplacementWarning: getGatewayInstallationReplacement()?.message,
+          ...(utilityModelWarnings.length ? { utilityModelWarnings } : {}),
           secretEgressProxy,
           degradedSecretOwners: listActiveDegradedSecretOwners().map(
             ({ ownerKind, ownerId, state, degradationState, paths, reason }) => ({

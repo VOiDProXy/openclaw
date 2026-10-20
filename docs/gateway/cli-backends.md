@@ -57,6 +57,11 @@ When `agents.defaults.utilityModel` is unset, OpenClaw uses the primary provider
 
 An explicitly configured utility model keeps its own runtime. A compatible runtime explicitly selected for the session, or a runtime pinned on the derived model's own entry, also wins over inherited routing. For other runtimes, automatic utility routing can prefer an available provider credential before borrowing the primary model's pinned runtime.
 
+Utility completions require an exact, empty tool cap. Config validation, Doctor,
+and status warn when a selected CLI backend cannot enforce that contract. The
+warning preserves your explicit route; choose a capable utility model or configure
+capable `utilityModel.fallbacks`.
+
 To explicitly use the Anthropic API for utility work, configure its runtime on the utility model:
 
 ```json5

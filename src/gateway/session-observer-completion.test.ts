@@ -1,4 +1,6 @@
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
+import { onAgentEvent, type AgentEventPayload } from "../infra/agent-events.js";
+import { claimAgentRunContext, releaseAgentRunContext } from "../infra/agent-run-registry.js";
 import { registerSecretValueForRedaction } from "../logging/secret-redaction-registry.js";
 import { resetSecretRedactionRegistryForTest } from "../logging/secret-redaction-registry.test-support.js";
 import { createSessionObserverCompletion } from "./session-observer-completion.js";
@@ -6,6 +8,7 @@ import type { SessionObserverDeps } from "./session-observer-model.js";
 import { observerState } from "./session-observer-state.test-support.js";
 import {
   createHarness,
+  event,
   flushObserver,
   modelMessage,
   preparedModel,
@@ -20,6 +23,75 @@ afterEach(() => {
   resetSessionObserverEventSequence();
   resetSecretRedactionRegistryForTest();
 });
+
+it.each(["exact tool cap", "invalid schema"])(
+  "warns once when %s failures disable observation, and retries on the next run",
+  async (failure) => {
+    vi.setSystemTime(0);
+    const notices: AgentEventPayload[] = [];
+    const unsubscribe = onAgentEvent((evt) => {
+      if (evt.stream === "notice") {
+        notices.push(evt);
+      }
+    });
+    const prepareModel = vi.fn(async () => {
+      if (failure === "exact tool cap") {
+        throw new Error('CLI backend "test-cli" cannot enforce this run\'s tool cap.');
+      }
+      return preparedModel();
+    });
+    const completeModel = vi.fn(async () =>
+      modelMessage({ headline: "Working", health: "on-track", planProgress: null }),
+    );
+    const harness = createHarness({ prepareModel, completeModel });
+    const owner = claimAgentRunContext(
+      "run-1",
+      { sessionKey: "agent:main:session-1", agentId: "main" },
+      { exclusive: true },
+    );
+    try {
+      await startAndAddToolNotes(harness.observer);
+      await vi.advanceTimersByTimeAsync(24_000);
+      expect(notices).toMatchObject([
+        {
+          runId: "run-1",
+          sessionKey: "agent:main:session-1",
+          data: {
+            phase: "warning",
+            message: expect.stringContaining("openai/gpt-test"),
+          },
+        },
+      ]);
+      expect(notices[0]?.data.message).toContain("choose a capable utility model");
+      expect(notices[0]?.data.message).toContain("utilityModel.fallbacks");
+      const callsAtDisable = prepareModel.mock.calls.length + completeModel.mock.calls.length;
+      await harness.observer.handleEventAsync(
+        event({ stream: "tool", data: { phase: "start", name: "read", args: { path: "more" } } }),
+      );
+      await vi.advanceTimersByTimeAsync(60_000);
+      expect(prepareModel.mock.calls.length + completeModel.mock.calls.length).toBe(callsAtDisable);
+      expect(notices).toHaveLength(1);
+
+      prepareModel.mockImplementation(async () => preparedModel());
+      completeModel.mockImplementation(async () =>
+        modelMessage({ headline: "Working", health: "on-track" }),
+      );
+      await startAndAddToolNotes(harness.observer, { runId: "run-2" });
+      await vi.advanceTimersByTimeAsync(12_000);
+      expect(harness.broadcastToConnIds).toHaveBeenCalledWith(
+        "session.observer",
+        expect.objectContaining({ runId: "run-2", headline: "Working" }),
+        expect.any(Set),
+        expect.anything(),
+      );
+      expect(notices).toHaveLength(1);
+    } finally {
+      unsubscribe();
+      await harness.observer.disposeAsync();
+      releaseAgentRunContext("run-1", owner);
+    }
+  },
+);
 
 function completionAfter(delay?: number) {
   const reply = modelMessage({

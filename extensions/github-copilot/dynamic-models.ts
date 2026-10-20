@@ -3,7 +3,6 @@ import type {
   ProviderCatalogContext,
   ProviderCatalogResult,
   ProviderPrepareDynamicModelContext,
-  ProviderResolveDynamicModelContext,
   ProviderRuntimeModel,
 } from "openclaw/plugin-sdk/plugin-entry";
 import {
@@ -30,24 +29,7 @@ type GithubCopilotCatalogContext = {
   authProfileMode?: ProviderPrepareDynamicModelContext["authProfileMode"];
 };
 
-function dynamicModelScope(
-  profileId?: string,
-  authProfileMode?: ProviderPrepareDynamicModelContext["authProfileMode"],
-): string {
-  const normalizedProfileId = profileId?.trim();
-  return normalizedProfileId
-    ? `profile:${normalizedProfileId}`
-    : authProfileMode
-      ? `direct:${authProfileMode}`
-      : "unscoped";
-}
-
 export function createGithubCopilotDynamicModelHooks() {
-  const preparedDynamicModels = new WeakMap<
-    object,
-    Map<string, ReadonlyMap<string, ProviderRuntimeModel>>
-  >();
-
   async function resolveCatalogAuth(ctx: GithubCopilotCatalogContext) {
     const auth = await resolveFirstGithubToken(ctx);
     return auth.githubToken ? auth : null;
@@ -107,7 +89,9 @@ export function createGithubCopilotDynamicModelHooks() {
     });
   }
 
-  async function prepareDynamicModel(ctx: ProviderPrepareDynamicModelContext): Promise<void> {
+  async function prepareDynamicModel(
+    ctx: ProviderPrepareDynamicModelContext,
+  ): Promise<ProviderRuntimeModel | void> {
     const catalogContext: GithubCopilotCatalogContext = {
       agentDir: ctx.agentDir,
       env: process.env,
@@ -125,36 +109,15 @@ export function createGithubCopilotDynamicModelHooks() {
           buildCopilotRuntimeHeaders({ config: ctx.config }),
         ).catch(() => null)
       : null;
-    const models = new Map<string, ProviderRuntimeModel>();
-    if (catalog) {
-      for (const model of catalog.models) {
-        models.set(model.id, {
-          ...model,
-          provider: PROVIDER_ID,
-          baseUrl: catalog.baseUrl,
-        });
-      }
+    const model = catalog?.models.findLast((candidate) => candidate.id === ctx.modelId);
+    if (catalog && model) {
+      return { ...model, provider: PROVIDER_ID, baseUrl: catalog.baseUrl };
     }
-    let scopedModels = preparedDynamicModels.get(ctx.modelRegistry);
-    if (!scopedModels) {
-      scopedModels = new Map();
-      preparedDynamicModels.set(ctx.modelRegistry, scopedModels);
-    }
-    scopedModels.set(dynamicModelScope(ctx.authProfileId, ctx.authProfileMode), models);
-  }
-
-  function resolveDynamicModel(ctx: ProviderResolveDynamicModelContext) {
-    return (
-      preparedDynamicModels
-        .get(ctx.modelRegistry)
-        ?.get(dynamicModelScope(ctx.authProfileId, ctx.authProfileMode))
-        ?.get(ctx.modelId) ?? resolveCopilotForwardCompatModel(ctx)
-    );
   }
 
   return {
     prepareDynamicModel,
-    resolveDynamicModel,
+    resolveDynamicModel: resolveCopilotForwardCompatModel,
     runCatalog,
     preferRuntimeResolvedModel: () => true,
   };

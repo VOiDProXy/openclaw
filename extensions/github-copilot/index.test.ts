@@ -448,8 +448,7 @@ describe("github-copilot plugin", () => {
         modelId: "gpt-5-mini",
         authProfileId: "github-copilot:github",
       };
-      await provider.prepareDynamicModel(context);
-      expect(provider.resolveDynamicModel(context)).toMatchObject({
+      expect(await provider.prepareDynamicModel(context)).toMatchObject({
         id: "gpt-5-mini",
         contextWindow,
       });
@@ -778,18 +777,18 @@ describe("github-copilot plugin", () => {
       ...(fallback ? { authProfileMode: "api_key" as const } : {}),
     };
     // Prepare both before reading either to catch account metadata leaking across fallback.
-    await provider.prepareDynamicModel(first);
-    await provider.prepareDynamicModel(second);
+    const firstModel = await provider.prepareDynamicModel(first);
+    const secondModel = await provider.prepareDynamicModel(second);
     if (!fallback) {
       expect(provider.preferRuntimeResolvedModel(first)).toBe(true);
     }
-    for (const [index, context] of [first, second].entries()) {
+    for (const [index, model] of [firstModel, secondModel].entries()) {
       expect(mocks.resolveCopilotRuntimeAuth).toHaveBeenNthCalledWith(index + 1, {
         githubToken: tokens[index],
         env: process.env,
         githubDomain: "github.com",
       });
-      expect(provider.resolveDynamicModel(context)).toMatchObject({
+      expect(model).toMatchObject({
         ...(!fallback ? { id: "gpt-5.6-sol", provider: "github-copilot", maxTokens: 128_000 } : {}),
         baseUrl: `https://api.githubcopilot.${hosts[index]}`,
         contextWindow: limits[index]![0],

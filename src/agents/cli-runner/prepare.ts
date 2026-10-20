@@ -693,7 +693,6 @@ async function prepareCliRunContextWithinReadFence(
   const canUseGatewayTools = !nodeClaudePlacement && !skipsTurnPreparation && !systemAgentMcpConfig;
   const bundleMcpEnabled =
     canUseGatewayTools && backendResolved.bundleMcp && params.disableTools !== true;
-  const bridgeConfiguredMcp = bundleMcpEnabled && backendResolved.id === "claude-cli";
   let mcpLoopbackRuntime = bundleMcpEnabled ? getActiveMcpLoopbackRuntime() : undefined;
   if (bundleMcpEnabled && !mcpLoopbackRuntime) {
     try {
@@ -711,12 +710,13 @@ async function prepareCliRunContextWithinReadFence(
       "Bundled MCP is enabled, but the OpenClaw MCP loopback server did not publish a runtime after startup.",
     );
   }
-  const { nodeWorkshopEnabled, hostOwnedTools } = mcp.resolveCliMcpToolOwnership(params, {
-    backend: backendResolved,
-    enabled: bundleMcpEnabled,
-    nodePlacement: nodeClaudePlacement,
-    skipPreparation: skipsTurnPreparation,
-  });
+  const { nodeWorkshopEnabled, hostOwnedTools, bridgeConfiguredMcp } =
+    mcp.resolveCliMcpToolOwnership(params, {
+      backend: backendResolved,
+      enabled: bundleMcpEnabled,
+      nodePlacement: nodeClaudePlacement,
+      skipPreparation: skipsTurnPreparation,
+    });
   const shouldMaterializeRuntimePolicy =
     runtimeToolsAllowPolicy !== undefined && canUseGatewayTools && params.disableTools !== true;
   const skillLibraryAuthoring: RunCliAgentParams["skillLibraryAuthoring"] =

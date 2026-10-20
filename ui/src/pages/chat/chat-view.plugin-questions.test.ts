@@ -19,6 +19,7 @@ import { resetComposerFixture } from "./chat-composer.test-support.ts";
 import { resetChatViewState } from "./chat-view-state.test-support.ts";
 import { createChatProps } from "./chat-view.test-helpers.ts";
 import { ChatView, type ChatProps } from "./chat-view.tsx";
+import { createComposerQuestions } from "./components/chat-composer-questions.ts";
 import { questionPanelIn } from "./components/chat-question-card.test-support.ts";
 import {
   installTranscriptDomMocks,
@@ -79,12 +80,15 @@ function createPluginChat(replacement: ControlUiReplacement<"composer">, initial
       const [value, setValue] = createSignal(props, { equals: false });
       update = (next) => setValue(() => ({ ...next }));
       const view = mountSolid(
-        () =>
-          createComponent(ChatView, {
+        () => {
+          const questions = createComposerQuestions(props.paneId, value);
+          return createComponent(ChatView, {
+            questions,
             get props() {
               return value();
             },
-          }),
+          });
+        },
         { container: provider, wrapper: createSolidApplicationContextProvider(context).wrapper },
       );
       onTestFinished(() => {

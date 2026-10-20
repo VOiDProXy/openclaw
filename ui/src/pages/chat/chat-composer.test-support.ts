@@ -15,11 +15,12 @@ import {
 import { mountSolid } from "../../test-helpers/mount-solid.ts";
 import { createSolidApplicationContextProvider } from "../../test-helpers/solid-application-context.tsx";
 import { flush } from "../../test-helpers/solid-settle.ts";
+import { createComposerQuestions } from "./components/chat-composer-questions.ts";
 import type { ChatComposerProps } from "./components/chat-composer-types.ts";
 import { ChatComposer, resetChatComposerState } from "./components/chat-composer.tsx";
 
 type ComposerProps = ChatComposerProps;
-type NativeComposerProps = Parameters<typeof ChatComposer>[0];
+type NativeComposerProps = ChatComposerProps;
 
 const providers = new WeakMap<
   HTMLElement,
@@ -73,10 +74,16 @@ export function renderComposerInto(container: HTMLElement, props: ComposerProps)
       },
     });
     const [current, update] = createSignal<NativeComposerProps>(bind(), { ownedWrite: true });
-    const view = mountSolid(() => createComponent(ChatComposer, merge(current)), {
-      container,
-      wrapper: composerContextWrapper(container),
-    });
+    const view = mountSolid(
+      () => {
+        const questions = createComposerQuestions(props.paneId, current);
+        return createComponent(ChatComposer, merge(current, { questions }));
+      },
+      {
+        container,
+        wrapper: composerContextWrapper(container),
+      },
+    );
     composers.set(container, {
       update: (next) => {
         owner = next;

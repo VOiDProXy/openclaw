@@ -17,6 +17,7 @@ import { removeQueuedMessage } from "./chat-queue.ts";
 import { createChatViewFrame } from "./chat-view-frame.ts";
 import { resetChatViewState } from "./chat-view-state.test-support.ts";
 import { createChatProps, disposeChatView, renderChatPropsInto } from "./chat-view.test-helpers.ts";
+import { createAsyncQuestionPresentation } from "./components/chat-async-question.ts";
 import { getTranscriptState } from "./components/chat-thread-interactions.ts";
 import {
   installTranscriptDomMocks,
@@ -185,11 +186,19 @@ it("reads confirmed discard from the outbox before the next queue frame arrives"
     }),
     getQueue: () => queue,
   };
-  const before = createChatViewFrame(props, () => undefined);
+  const before = createChatViewFrame(
+    props,
+    () => undefined,
+    createAsyncQuestionPresentation(getTranscriptState(props.paneId), props),
+  );
   expect(before.asyncQuestions.pending).toEqual([]);
   queue = [];
   before.asyncQuestions.discard(row);
-  const after = createChatViewFrame(props, () => undefined);
+  const after = createChatViewFrame(
+    props,
+    () => undefined,
+    createAsyncQuestionPresentation(getTranscriptState(props.paneId), props),
+  );
   expect(after.asyncQuestions.pending.map((question) => question.itemId)).toEqual(["audience"]);
   expect(after.asyncQuestions.delivery.size).toBe(0);
   expect(props.onAsyncQuestionSubmit).not.toHaveBeenCalled();

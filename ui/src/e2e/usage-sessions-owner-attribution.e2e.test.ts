@@ -425,7 +425,7 @@ rangeSuite.define(() => {
                 }>(page, "sessions.create", {
                   key,
                   agentId: "opus",
-                  label: `${label} usage session`,
+                  label: `${label} usage session (${pointCount} points)`,
                 });
                 expect(created.ok).toBe(true);
                 expect(created.key).toBe(key);
@@ -550,7 +550,7 @@ rangeSuite.define(() => {
               await page.evaluate(() => window.dispatchEvent(new Event("focus")));
               await expect
                 .poll(() => panel.locator(".session-detail-title").textContent())
-                .toContain("Replacement usage session");
+                .toContain(`Replacement usage session (${pointCount} points)`);
               await expect
                 .poll(() => panel.locator(".session-detail-stats").textContent())
                 .toContain(String(pointCount * 300));
@@ -560,7 +560,7 @@ rangeSuite.define(() => {
               expect(await selectedReplacement.count()).toBe(1);
               expect(await selectedReplacement.getAttribute("aria-pressed")).toBe("true");
               expect(await selectedReplacement.getAttribute("aria-label")).toBe(
-                "Replacement usage session",
+                `Replacement usage session (${pointCount} points)`,
               );
               await expect
                 .poll(() =>

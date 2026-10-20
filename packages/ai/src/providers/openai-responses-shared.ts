@@ -120,10 +120,8 @@ export function applyResponsesServiceTierPricing(
 }
 
 export function applyCommonResponsesParams<TApi extends Api>(
-  params: Pick<
-    ResponseCreateParamsStreaming,
-    "max_output_tokens" | "temperature" | "text" | "tools" | "reasoning" | "include"
-  >,
+  params: Omit<ResponseCreateParamsStreaming, "prompt_cache_options"> &
+    Pick<OpenAIResponsesRequestParams, "prompt_cache_options">,
   model: Model<TApi>,
   context: Context,
   options?: ResponsesCommonParamsOptions,

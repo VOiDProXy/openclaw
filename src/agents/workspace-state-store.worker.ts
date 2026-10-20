@@ -25,9 +25,7 @@ import {
   hasRecentWorkspaceSetupState,
   recentWorkspaceAttestation,
   replaceWorkspaceAttestationInDatabase,
-  WORKSPACE_SETUP_STATE_VERSION,
   type WorkspaceAttestationInput,
-  type WorkspaceSetupState,
   type WorkspaceStateDatabase,
   type WorkspaceStateDatabaseHandle,
 } from "./workspace-state-store.kernel.js";
@@ -37,6 +35,10 @@ import type {
   WorkspaceStateGuard,
   WorkspaceStateWorkerOperations,
 } from "./workspace-state-store.worker-contract.js";
+import {
+  WORKSPACE_SETUP_STATE_VERSION,
+  type WorkspaceSetupState,
+} from "./workspace-state-types.js";
 
 function deleteWorkspace(
   database: WorkspaceStateDatabaseHandle,

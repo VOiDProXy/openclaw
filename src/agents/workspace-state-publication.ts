@@ -7,7 +7,7 @@ import {
 } from "../infra/sqlite-worker-operation-admission.js";
 import type { OpenClawStateWorkerContext } from "../state/openclaw-state-worker-context.types.js";
 import { createStateDomainPublication } from "../state/state-domain-publication.js";
-import type { WorkspaceStateSnapshot } from "./workspace-state-store.kernel.js";
+import type { WorkspaceStateSnapshot } from "./workspace-state-types.js";
 
 export const workspaceStatePublication = createStateDomainPublication<WorkspaceStateSnapshot>({
   domain: "workspace-state",

@@ -2,7 +2,7 @@ import { resolveGlobalMap } from "../shared/global-singleton.js";
 import { registerOpenClawStatePathCacheInvalidation } from "../state/openclaw-state-db-cache.js";
 import type { OpenClawStateWorkerContext } from "../state/openclaw-state-worker-context.types.js";
 import { workspaceStatePublication } from "./workspace-state-publication.js";
-import type { WorkspaceStateSnapshot } from "./workspace-state-store.kernel.js";
+import type { WorkspaceStateSnapshot } from "./workspace-state-types.js";
 
 type Store = {
   identity: string;

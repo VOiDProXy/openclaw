@@ -61,6 +61,8 @@ Utility completions require an exact, empty tool cap. Config validation, Doctor,
 and status warn when a selected CLI backend cannot enforce that contract. The
 warning preserves your explicit route; choose a capable utility model or configure
 capable `utilityModel.fallbacks`.
+Read-only status output, including `status --json`, keeps a generic warning while
+omitting model and configuration details.
 
 To explicitly use the Anthropic API for utility work, configure its runtime on the utility model:
 

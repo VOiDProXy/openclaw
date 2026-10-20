@@ -507,7 +507,7 @@ describe("getStatusSummary", () => {
     expect(JSON.stringify(summary.degradedSecretOwners)).not.toContain("PRIVATE_REF_ID");
   });
 
-  it("reports utility capability warnings only to status callers with configuration access", async () => {
+  it("reports utility capability warnings with details only for configuration access", async () => {
     const backend: CliBackendPlugin = {
       id: "fixture-cli",
       config: { command: "fixture" },
@@ -546,12 +546,24 @@ describe("getStatusSummary", () => {
         includeSensitive: false,
         includeChannelSummary: false,
       });
-      expect(redacted.utilityModelWarnings).toBeUndefined();
-      const capable = await getStatusSummary({
-        config: { agents: { ...config.agents, defaults: { utilityModel: "local/capable" } } },
-        includeChannelSummary: false,
-      });
-      expect(capable.utilityModelWarnings).toBeUndefined();
+      expect(redacted.utilityModelWarnings).toEqual([
+        expect.objectContaining({
+          message: expect.stringContaining(
+            "Choose a capable utility model or add capable utilityModel fallbacks",
+          ),
+        }),
+      ]);
+      expect(JSON.stringify(redacted.utilityModelWarnings)).not.toMatch(
+        /fixture-cli|small|worker|agents\./,
+      );
+      for (const includeSensitive of [true, false]) {
+        const capable = await getStatusSummary({
+          config: { agents: { ...config.agents, defaults: { utilityModel: "local/capable" } } },
+          includeSensitive,
+          includeChannelSummary: false,
+        });
+        expect(capable.utilityModelWarnings).toBeUndefined();
+      }
     } finally {
       setup.mockRestore();
       registered.mockRestore();

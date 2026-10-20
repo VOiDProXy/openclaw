@@ -473,7 +473,7 @@ export async function prepareStatusSummary(
         await import("../infra/database-engine/admitted-diagnostics.js")
       ).describeAdmittedDatabaseStores(cfg)
     : undefined;
-  const utilityModelWarnings = includeSensitive ? collectUtilityModelWarnings(cfg) : [];
+  const utilityModelWarnings = collectUtilityModelWarnings(cfg);
   return {
     publish() {
       const publishedStores = sessionStores.publish();
@@ -549,7 +549,19 @@ export async function prepareStatusSummary(
           startupMigrationWarning: readStartupMigrationWarning(includeSensitive),
           startupRecoveryWarning: readStartupRecoveryWarning(includeSensitive),
           installationReplacementWarning: getGatewayInstallationReplacement()?.message,
-          ...(utilityModelWarnings.length ? { utilityModelWarnings } : {}),
+          ...(utilityModelWarnings.length
+            ? {
+                utilityModelWarnings: includeSensitive
+                  ? utilityModelWarnings
+                  : [
+                      {
+                        path: "utilityModel",
+                        message:
+                          "A configured utility model cannot enforce tool-free utility work. Choose a capable utility model or add capable utilityModel fallbacks.",
+                      },
+                    ],
+              }
+            : {}),
           secretEgressProxy,
           degradedSecretOwners: listActiveDegradedSecretOwners().map(
             ({ ownerKind, ownerId, state, degradationState, paths, reason }) => ({

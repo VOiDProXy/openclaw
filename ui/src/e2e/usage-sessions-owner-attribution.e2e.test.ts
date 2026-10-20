@@ -1,4 +1,3 @@
-import { writeFile } from "node:fs/promises";
 import path from "node:path";
 import type { Page } from "playwright";
 import { expect, it, vi } from "vitest";
@@ -23,24 +22,11 @@ const suite = createControlUiE2eSuite({
     `Playwright Chromium is not available at ${executablePath}`,
 });
 
-const captureUiProof = process.env.OPENCLAW_CAPTURE_UI_PROOF === "1";
 const viewport = { height: 900, width: 1_440 };
 
 const PROOF_SESSION_ID = "tg-dm-owner-attribution-proof";
 const PROOF_STORE_KEY = "agent:main:telegram:dm";
 const PROOF_LABEL = "Telegram DM";
-
-async function capture(page: Page, name: string) {
-  if (!captureUiProof) {
-    return;
-  }
-  expect(await page.locator(".community-invite-card").count()).toBe(0);
-  await page.screenshot({
-    animations: "disabled",
-    fullPage: true,
-    path: path.join(suite.artifactDir, name),
-  });
-}
 
 async function dragTimelineRange(page: Page, fraction: number) {
   const panel = page.locator(".session-detail-panel");
@@ -78,46 +64,85 @@ async function requestGateway<T>(
   );
 }
 
+async function runUsageScenario(
+  context: Parameters<typeof suite.runScenario>[0],
+  label: string,
+  prepare: (
+    state: OpenClawTestState,
+    port: number,
+    signal: AbortSignal,
+  ) => Promise<typeof import("../../../src/gateway/server.js").startGatewayServer>,
+  run: (state: OpenClawTestState, port: number, signal: AbortSignal) => Promise<void>,
+  restore?: () => void,
+) {
+  let fixture: OpenClawTestState | undefined;
+  let gateway: Promise<GatewayServer> | undefined;
+  await suite.runScenario(context, {
+    retainedState: () => fixture?.root,
+    close: async () => {
+      await (await gateway)?.close({ reason: `${label} cleanup` });
+    },
+    release: async () => {
+      restore?.();
+      await fixture?.cleanup();
+      resetLogger();
+    },
+    run: async (signal) => {
+      const port = await getFreePort();
+      signal.throwIfAborted();
+      const state = await createOpenClawTestState({
+        label,
+        env: {
+          OPENCLAW_SKIP_BROWSER_CONTROL_SERVER: "1",
+          OPENCLAW_SKIP_CANVAS_HOST: "1",
+          OPENCLAW_SKIP_CHANNELS: "1",
+          OPENCLAW_SKIP_CRON: "1",
+          OPENCLAW_SKIP_GMAIL_WATCHER: "1",
+          OPENCLAW_SKIP_PROVIDERS: "1",
+          OPENCLAW_TEST_MINIMAL_GATEWAY: "1",
+          VITEST: "1",
+        },
+      });
+      fixture = state;
+      setLoggerOverride({
+        file: state.path("gateway.log"),
+        level: "silent",
+        consoleLevel: "silent",
+      });
+      signal.throwIfAborted();
+      const startGatewayServer = await prepare(state, port, signal);
+      signal.throwIfAborted();
+      gateway = startGatewayServer(port, {
+        auth: { mode: "none" },
+        bind: "loopback",
+        controlUiEnabled: false,
+        sidecarStartup: "defer",
+      });
+      await gateway;
+      signal.throwIfAborted();
+      await run(state, port, signal);
+    },
+  });
+}
+
+function gatewayConfig(port: number): OpenClawConfig["gateway"] {
+  return {
+    mode: "local",
+    port,
+    bind: "loopback",
+    auth: { mode: "none" },
+    controlUi: { enabled: false },
+  };
+}
+
 suite.define(() => {
   it.for([false, true])(
     "keeps same-id owners separate with an empty current session: %s",
     async (resetCurrentSession, context) => {
-      let fixture: OpenClawTestState | undefined;
-      let gateway: Promise<GatewayServer> | undefined;
-      await suite.runScenario(context, {
-        retainedState: () => fixture?.root,
-        close: async () => {
-          const server = await gateway;
-          await server?.close({ reason: "usage sessions owner attribution e2e cleanup" });
-        },
-        release: async () => {
-          await fixture?.cleanup();
-          resetLogger();
-        },
-        run: async (signal) => {
-          const port = await getFreePort();
-          signal.throwIfAborted();
-          const state = await createOpenClawTestState({
-            label: "usage-sessions-owner-attribution",
-            env: {
-              OPENCLAW_SKIP_BROWSER_CONTROL_SERVER: "1",
-              OPENCLAW_SKIP_CANVAS_HOST: "1",
-              OPENCLAW_SKIP_CHANNELS: "1",
-              OPENCLAW_SKIP_CRON: "1",
-              OPENCLAW_SKIP_GMAIL_WATCHER: "1",
-              OPENCLAW_SKIP_PROVIDERS: "1",
-              OPENCLAW_TEST_MINIMAL_GATEWAY: "1",
-              VITEST: "1",
-            },
-          });
-          fixture = state;
-          setLoggerOverride({
-            file: state.path("gateway.log"),
-            level: "silent",
-            consoleLevel: "silent",
-          });
-          signal.throwIfAborted();
-
+      await runUsageScenario(
+        context,
+        "usage-sessions-owner-attribution",
+        async (state, port, signal) => {
           const { startGatewayServer } = await import("../../../src/gateway/server.js");
           signal.throwIfAborted();
           const { persistSessionTranscriptTurn, upsertSessionEntryCore } =
@@ -133,13 +158,7 @@ suite.define(() => {
                 opus: { name: "Molty", workspace: state.workspaceDir },
               },
             },
-            gateway: {
-              mode: "local",
-              port,
-              bind: "loopback",
-              auth: { mode: "none" },
-              controlUi: { enabled: false },
-            },
+            gateway: gatewayConfig(port),
             plugins: { enabled: false },
             session: {
               store: path.join(state.stateDir, "agents", "{agentId}", "sessions", "sessions.json"),
@@ -190,17 +209,9 @@ suite.define(() => {
               },
             );
           }
-
-          signal.throwIfAborted();
-          gateway = startGatewayServer(port, {
-            auth: { mode: "none" },
-            bind: "loopback",
-            controlUiEnabled: false,
-            sidecarStartup: "defer",
-          });
-          await gateway;
-          signal.throwIfAborted();
-
+          return startGatewayServer;
+        },
+        async (_state, port) => {
           await suite.withPage(
             {
               locale: "en-US",
@@ -226,8 +237,6 @@ suite.define(() => {
               // A rendered usage row proves the handshake and requested report both arrived.
               await otherRow.waitFor();
               await expect.poll(() => otherRow.count()).toBe(1);
-              await otherRow.scrollIntoViewIfNeeded();
-              await capture(page, "01-other-owner.png");
 
               // The named family stays visible before its new current instance has a transcript.
               const row = page.locator(`.session-bar-row[title="${PROOF_STORE_KEY}"]`);
@@ -246,85 +255,40 @@ suite.define(() => {
               }
               await expect.poll(() => page.locator(".session-bar-row").count()).toBe(2);
 
-              await row.scrollIntoViewIfNeeded();
-              await capture(page, "02-current-owner.png");
+              expect(await page.locator(".community-invite-card").count()).toBe(0);
               expect(pageErrors).toEqual([]);
             },
           );
         },
-      });
+      );
     },
   );
 
   it.for([1, 2])(
     "clears ranges after session recreation (%s points)",
     async (pointCount, context) => {
-      let fixture: OpenClawTestState | undefined;
-      let gateway: Promise<GatewayServer> | undefined;
       let restoreClock: (() => void) | undefined;
-      await suite.runScenario(context, {
-        retainedState: () => fixture?.root,
-        close: async () => {
-          await (await gateway)?.close({ reason: "usage detail instance e2e cleanup" });
-        },
-        release: async () => {
-          restoreClock?.();
-          await fixture?.cleanup();
-          resetLogger();
-        },
-        run: async (signal) => {
-          const port = await getFreePort();
-          signal.throwIfAborted();
-          const state = await createOpenClawTestState({
-            label: "usage-detail-instance",
-            env: {
-              OPENCLAW_SKIP_BROWSER_CONTROL_SERVER: "1",
-              OPENCLAW_SKIP_CANVAS_HOST: "1",
-              OPENCLAW_SKIP_CHANNELS: "1",
-              OPENCLAW_SKIP_CRON: "1",
-              OPENCLAW_SKIP_GMAIL_WATCHER: "1",
-              OPENCLAW_SKIP_PROVIDERS: "1",
-              OPENCLAW_TEST_MINIMAL_GATEWAY: "1",
-              VITEST: "1",
-            },
-          });
-          fixture = state;
-          setLoggerOverride({
-            file: state.path("gateway.log"),
-            level: "silent",
-            consoleLevel: "silent",
-          });
-          signal.throwIfAborted();
+      await runUsageScenario(
+        context,
+        "usage-detail-instance",
+        async (state, port) => {
           await state.writeConfig({
             agents: {
               ownership: "explicit",
               defaults: { workspace: state.workspaceDir },
               entries: { main: {}, opus: {} },
             },
-            gateway: {
-              mode: "local",
-              port,
-              bind: "loopback",
-              auth: { mode: "none" },
-              controlUi: { enabled: false },
-            },
+            gateway: gatewayConfig(port),
             plugins: { enabled: false },
           });
           const { startGatewayServer } = await import("../../../src/gateway/server.js");
-          const { persistSessionTranscriptTurn } =
-            await import("../../../src/config/sessions/session-accessor.js");
           const { ensureGatewayOwnerProfile } = await import("../../../src/state/user-profiles.js");
           ensureGatewayOwnerProfile("Usage Proof", { env: state.env });
-          signal.throwIfAborted();
-          gateway = startGatewayServer(port, {
-            auth: { mode: "none" },
-            bind: "loopback",
-            controlUiEnabled: false,
-            sidecarStartup: "defer",
-          });
-          await gateway;
-          signal.throwIfAborted();
-
+          return startGatewayServer;
+        },
+        async (state, port, signal) => {
+          const { persistSessionTranscriptTurn } =
+            await import("../../../src/config/sessions/session-accessor.js");
           await suite.withPage(
             { locale: "en-US", timezoneId: "UTC", serviceWorkers: "block", viewport },
             async ({ page }) => {
@@ -333,9 +297,8 @@ suite.define(() => {
               const pageErrors: string[] = [];
               const overviewRequests = new Map<string, Record<string, unknown>>();
               const observedOverviews: Array<{
-                requestId: string;
                 params: Record<string, unknown>;
-                session?: { key: string; agentId?: string; sessionId?: string; tokens?: number };
+                session?: SessionsUsageResult["sessions"][number];
               }> = [];
               let connections = 0;
               page.on("pageerror", (error) => pageErrors.push(String(error)));
@@ -371,20 +334,9 @@ suite.define(() => {
                   if (frame.type !== "res" || !frame.ok || !params || !frame.payload) {
                     return;
                   }
-                  const session = frame.payload.sessions.find((entry) => entry.key === key);
                   observedOverviews.push({
-                    requestId: frame.id,
                     params,
-                    ...(session
-                      ? {
-                          session: {
-                            key: session.key,
-                            agentId: session.agentId,
-                            sessionId: session.sessionId,
-                            tokens: session.usage?.totalTokens,
-                          },
-                        }
-                      : {}),
+                    session: frame.payload.sessions.find((entry) => entry.key === key),
                   });
                 });
               });
@@ -483,7 +435,6 @@ suite.define(() => {
               if (pointCount === 1) {
                 await page.mouse.up();
               }
-              await capture(page, "01-original-instance-details.png");
               const selectedConnections = connections;
 
               const deleted = await requestGateway<{ deleted: boolean }>(page, "sessions.delete", {
@@ -567,30 +518,6 @@ suite.define(() => {
                 expect(await panel.locator(".timeseries-summary__range").count()).toBe(0);
               } finally {
                 await page.mouse.up();
-                await capture(page, "02-replacement-instance-details.png");
-                await panel.locator(".session-logs-compact").scrollIntoViewIfNeeded();
-                await capture(page, "03-replacement-instance-conversation.png");
-                if (captureUiProof) {
-                  await writeFile(
-                    path.join(suite.artifactDir, "instance-replacement.json"),
-                    JSON.stringify({
-                      key,
-                      agentId: "opus",
-                      originalId,
-                      replacementId,
-                      pointCount,
-                      selection: {
-                        pressed: await selectedReplacement.getAttribute("aria-pressed"),
-                        label: await selectedReplacement.getAttribute("aria-label"),
-                      },
-                      initialOverview,
-                      focusOverviews: observedOverviews.slice(focusOverviewStart),
-                      selectedConnections,
-                      connections,
-                      ...(await readDetails()),
-                    }),
-                  );
-                }
               }
               if (pointCount === 2) {
                 await dragTimelineRange(page, 0.25);
@@ -602,11 +529,13 @@ suite.define(() => {
                 await expect.poll(() => panel.locator(".session-log-content").count()).toBe(2);
               }
               expect(connections).toBe(selectedConnections);
+              expect(await page.locator(".community-invite-card").count()).toBe(0);
               expect(pageErrors).toEqual([]);
             },
           );
         },
-      });
+        () => restoreClock?.(),
+      );
     },
   );
 });

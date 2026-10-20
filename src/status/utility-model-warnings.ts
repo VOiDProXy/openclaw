@@ -17,6 +17,12 @@ import { resolvePluginSetupCliBackend } from "../plugins/setup-registry.js";
 
 /** Known descriptor mismatches only; model quality and live availability remain runtime facts. */
 export function collectUtilityModelWarnings(config: OpenClawConfig): ConfigValidationIssue[] {
+  if (
+    config.agents?.defaults?.utilityModel === undefined &&
+    !Object.values(config.agents?.entries ?? {}).some((agent) => agent.utilityModel !== undefined)
+  ) {
+    return [];
+  }
   const warnings = new Map<string, ConfigValidationIssue>();
   const resolveBackend = (id: string) => {
     const normalized = normalizeProviderId(id);

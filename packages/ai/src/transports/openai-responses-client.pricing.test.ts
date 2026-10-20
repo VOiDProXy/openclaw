@@ -59,7 +59,11 @@ const model = {
   maxTokens: 8192,
 } satisfies Model<"openai-responses">;
 
-function completedResponse(serviceTier: string | null | undefined, cachedTokens = 0): SdkResponse {
+function completedResponse(
+  serviceTier: string | null | undefined,
+  cachedTokens = 0,
+  cacheWriteTokens = 0,
+): SdkResponse {
   return {
     data: (async function* () {
       yield {
@@ -80,7 +84,10 @@ function completedResponse(serviceTier: string | null | undefined, cachedTokens 
           ],
           usage: {
             input_tokens: 1_000_000,
-            input_tokens_details: { cached_tokens: cachedTokens },
+            input_tokens_details: {
+              cached_tokens: cachedTokens,
+              cache_write_tokens: cacheWriteTokens,
+            },
             output_tokens: 1_000_000,
             total_tokens: 2_000_000,
           },
@@ -108,6 +115,34 @@ describe("managed Responses transport service-tier pricing", () => {
     // Base cost 2 + 10 = 12; gpt-5.5 priority is 2.5x = 30 (flat 2x would be 24).
     expect(result.usage.cost.total).toBeCloseTo(30, 6);
   });
+
+  it.each([
+    { route: "managed", ttl: "30m", expectedWrite: 2.5 },
+    { route: "managed", ttl: "12h", expectedWrite: 5 },
+    { route: "simple", ttl: "30m", expectedWrite: 2.5 },
+    { route: "simple", ttl: "12h", expectedWrite: 5 },
+  ] as const)(
+    "prices $route $ttl cache writes without charging ordinary input twice",
+    async ({ route, ttl, expectedWrite }) => {
+      sseState.outcomes.push(completedResponse("default", 0, 1_000_000));
+      const pricedModel = { ...model, id: "gpt-6.1-sol", cost: { ...model.cost, cacheWrite: 2.5 } };
+      const streamFn =
+        route === "managed"
+          ? createOpenAIResponsesTransportStreamFn()
+          : streamSimpleOpenAIResponses;
+      const stream = await streamFn(
+        pricedModel,
+        { messages: [] },
+        { apiKey: "test-key", promptCacheTtl: ttl },
+      );
+      const result = await stream.result();
+      expect(result.stopReason).toBe("stop");
+      expect(sseState.requests[0]).toHaveProperty("prompt_cache_options.ttl", ttl);
+      expect(result.usage.cost.input).toBe(0);
+      expect(result.usage.cost.cacheWrite).toBeCloseTo(expectedWrite, 6);
+      expect(result.usage.cost.total).toBeCloseTo(10 + expectedWrite, 6);
+    },
+  );
 
   it.each([
     { route: "managed", responseTier: "ultrafast" },

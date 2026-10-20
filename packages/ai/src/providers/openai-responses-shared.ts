@@ -120,7 +120,10 @@ export function applyResponsesServiceTierPricing(
 }
 
 export function applyCommonResponsesParams<TApi extends Api>(
-  params: ResponseCreateParamsStreaming,
+  params: Pick<
+    ResponseCreateParamsStreaming,
+    "max_output_tokens" | "temperature" | "text" | "tools" | "reasoning" | "include"
+  >,
   model: Model<TApi>,
   context: Context,
   options?: ResponsesCommonParamsOptions,
@@ -260,6 +263,7 @@ export async function runResponsesStreamLifecycle<TApi extends Api>(params: {
         : undefined;
     const terminal = await processResponsesStream(hookedOpenAIStream, output, stream, model, {
       ...processStreamOptions,
+      promptCacheTtl: requestParams.prompt_cache_options?.ttl,
       resolveServiceTier: (responseTier, originalTier) =>
         responseTier ??
         (requestedTier === "priority" || requestedTier === "default"

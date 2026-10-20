@@ -1,7 +1,7 @@
 import { normalizeProviderId } from "@openclaw/model-catalog-core/provider-id";
 import {
   listAgentIds,
-  resolveAgentConfig,
+  resolveAgentEntry,
   withAgentRosterFactsBatch,
 } from "../agents/agent-scope-config.js";
 import {
@@ -58,10 +58,11 @@ export function collectUtilityModelWarnings(config: OpenClawConfig): ConfigValid
         defaultProvider,
         manifestPlugins: [],
       });
+      const agent = resolveAgentEntry(config, agentId);
       const path =
-        resolveAgentConfig(config, agentId)?.utilityModel === undefined
+        agent?.utilityModel === undefined
           ? "agents.defaults.utilityModel"
-          : `agents.entries.${agentId}.utilityModel`;
+          : `agents.entries.${agent.id}.utilityModel`;
       for (const raw of candidates) {
         const resolved = resolveModelRefFromString({
           cfg: config,

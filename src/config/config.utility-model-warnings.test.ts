@@ -52,6 +52,20 @@ describe("utility model capability warnings", () => {
     });
   });
 
+  it("points per-agent warnings at the authored entry ID", () => {
+    const utilityModel = "fixture-cli/small";
+    const result = validate({ agents: { entries: { Worker: { utilityModel } } } });
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) {
+      throw new Error("Expected valid utility route");
+    }
+    expect(result.config.agents?.entries?.Worker?.utilityModel).toBe(utilityModel);
+    expect(result.warnings).toContainEqual(
+      expect.objectContaining({ path: "agents.entries.Worker.utilityModel" }),
+    );
+  });
+
   it.each([
     { override: "local/capable", expected: 0 },
     { override: "", expected: 0 },

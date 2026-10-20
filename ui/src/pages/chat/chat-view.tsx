@@ -1,6 +1,6 @@
 import { dynamic } from "@solidjs/web";
 import type { Component } from "solid-js";
-import { createMemo, Show, untrack } from "solid-js";
+import { createMemo, merge, Show, untrack } from "solid-js";
 import type { ControlUiSurfaceProps } from "../../../../src/plugin-sdk/control-ui.js";
 import type { ApplicationContext } from "../../app/context-types.ts";
 import { ExecApprovalCard } from "../../components/exec-approval-card-solid.tsx";
@@ -192,11 +192,11 @@ function ChatComposerCompanion(input: ChatViewInput) {
   // The companion belongs to this pane's lifetime; replacement panes mount a new owner.
   const initialPaneId = untrack(() => input.props.paneId);
   const questionPanel = createComposerQuestionPanel(
-    () => ({
-      ...input.props,
-      asyncQuestions: input.frame.asyncQuestions,
-      getTranscriptElement: input.getTranscriptElement,
-    }),
+    () =>
+      merge(input.props, {
+        asyncQuestions: input.frame.asyncQuestions,
+        getTranscriptElement: input.getTranscriptElement,
+      }),
     getChatComposerState(initialPaneId),
   );
   return (
@@ -207,7 +207,7 @@ function ChatComposerCompanion(input: ChatViewInput) {
       </div>
       <ComposerQuestionDock panel={questionPanel()} />
       <ComposerQueue
-        composer={{ ...input.props, displayQueue: input.frame.displayQueue }}
+        composer={merge(input.props, { displayQueue: input.frame.displayQueue })}
         showAbortableUi={
           Boolean(input.props.canAbort && input.props.onAbort) &&
           !hasTerminalRunStatus(input.props.runStatus)

@@ -1,10 +1,12 @@
 /* @vitest-environment jsdom */
+import { createEffect, createRoot, flush } from "solid-js";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createTestGatewayClient } from "../../test-helpers/gateway-client.ts";
 import { createStorageMock } from "../../test-helpers/storage.ts";
 import { createTestChatPane, getPaneTestRuntime } from "./chat-pane.test-support.ts";
 import { applyChatPendingInputs } from "./chat-pending-inputs.ts";
 import { chatRunPresentation } from "./chat-run-presentation.ts";
+import { handlePageGatewayEvent } from "./chat-state-events.ts";
 import { handleChatScrollTakeover } from "./scroll.ts";
 
 const disposals: Array<() => void> = [];
@@ -83,6 +85,74 @@ function setup() {
 }
 
 describe("transcript arrival scroll ownership", () => {
+  it("keeps text publications out of the message and run-state projections", () => {
+    const { state } = setup();
+    state.chatRunId = "stream-run";
+    const observed = vi.fn();
+    disposals.push(
+      createRoot((dispose) => {
+        createEffect(() => ({ messages: state.chatMessages, runId: state.chatRunId }), observed);
+        return dispose;
+      }),
+    );
+    const delta = (seq: number) =>
+      handlePageGatewayEvent(state, {
+        type: "event",
+        event: "chat",
+        payload: {
+          state: "delta",
+          sessionKey: state.sessionKey,
+          runId: "stream-run",
+          seq,
+          message: { role: "assistant", content: [{ type: "text", text: `Reply ${seq}` }] },
+        },
+      });
+    delta(1);
+    vi.advanceTimersToNextFrame();
+    flush();
+    observed.mockClear();
+    for (const seq of [2, 3, 4]) {
+      delta(seq);
+    }
+    expect(state.chatStream).toBe("Reply 4");
+    vi.advanceTimersToNextFrame();
+    flush();
+    expect(observed).not.toHaveBeenCalled();
+    chatRunPresentation(state).batch(() => {
+      state.chatStream = null;
+      state.chatRunId = null;
+    });
+    flush();
+    expect(observed).toHaveBeenCalledOnce();
+    expect(observed.mock.calls[0]?.[0].runId).toBeNull();
+  });
+
+  it("only schedules same-height streaming arrivals for a locked reader without a pane commit", async () => {
+    const { state, scrollport } = setup();
+    const follow = vi.spyOn(state, "chatScrollToEnd");
+    chatRunPresentation(state).batch(() => {
+      state.chatStream = "Text in the existing tail row";
+    }, "animation-frame");
+    vi.advanceTimersToNextFrame();
+    await Promise.resolve();
+    vi.advanceTimersToNextFrame();
+    expect(follow).not.toHaveBeenCalled();
+    expect(scrollport.scrollTop).toBe(1500);
+    expect(state.chatNewMessagesBelow).toBe(false);
+    scrollport.scrollTop = 800;
+    handleChatScrollTakeover(state);
+    state.chatNewMessagesBelow = false;
+    chatRunPresentation(state).batch(() => {
+      state.chatStream = "More text in the existing tail row";
+    }, "animation-frame");
+    vi.advanceTimersToNextFrame();
+    await Promise.resolve();
+    vi.advanceTimersToNextFrame();
+    expect(state.chatNewMessagesBelow).toBe(true);
+    expect(scrollport.scrollTop).toBe(800);
+    expect(follow).not.toHaveBeenCalled();
+  });
+
   it("coalesces streamed replies without delaying the draft or new transcript rows", () => {
     const { state, controller, published } = setup();
     for (let index = 0; index < 36; index++) {

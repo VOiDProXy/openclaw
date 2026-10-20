@@ -109,6 +109,7 @@ export function ChatComposer(props: ChatComposerProps) {
   };
   const prediction = createComposerPrediction(readPredictionSource);
   const questionPanel = createComposerQuestionPanel(() => currentProps, state, composition);
+  const streaming = createMemo(() => currentProps.stream !== null);
   const context = createMemo(() => {
     draftState();
     dictation.read();
@@ -120,6 +121,7 @@ export function ChatComposer(props: ChatComposerProps) {
       voice,
       prediction,
       questionPanel(),
+      streaming(),
     );
   });
   createEffect(

@@ -32,20 +32,16 @@ function notificationFixture(surface: "web" | "native") {
   const nativeNotifications = surface === "native" ? createNativeNotificationsCapability() : null;
   onTestFinished(() => nativeNotifications?.dispose());
   const enable = vi.fn(async () => undefined);
-  Object.assign(fixture.context, {
-    nativeNotifications,
-    webPush: {
-      snapshot: {
-        supported: true,
-        permission: "default",
-        subscription: "unknown",
-        loading: false,
-      },
-      run: enable,
-      subscribe: () => () => {},
-      dispose: () => {},
+  const webPush = {
+    snapshot: {
+      supported: true,
+      permission: "default",
+      subscription: "unknown",
+      loading: false,
     },
-  });
+    run: enable,
+  };
+  Object.assign(fixture.context, { nativeNotifications, webPush });
   vi.mocked(fixture.context.sessions.createResult).mockResolvedValue({
     key: "agent:main:dashboard:notification-onboarding",
     initialRun: { status: "idle" },
@@ -68,11 +64,11 @@ function submitFromClick(flow: DraftSubmissionFlow, background = false) {
 }
 
 it.each([
-  { surface: "web", background: true },
-  { surface: "native", background: false },
+  ["web", true],
+  ["native", false],
 ] as const)(
-  "prompts $surface synchronously and only once when background=$background",
-  async ({ surface, background }) => {
+  "prompts %s synchronously and only once (background=%s)",
+  async (surface, background) => {
     const { context, flow, browserPermission, enable, permissionGestures, postMessage } =
       notificationFixture(surface);
 
@@ -110,8 +106,7 @@ it.each(["programmatic", "empty", "command", "blocked"] as const)(
 
     await (scenario === "programmatic" ? flow.submit() : submitFromClick(flow));
 
-    expect(browserPermission).not.toHaveBeenCalled();
-    expect(enable).not.toHaveBeenCalled();
+    expect([browserPermission.mock.calls, enable.mock.calls]).toEqual([[], []]);
     if (scenario === "blocked") {
       expect(context.sessions.createResult).not.toHaveBeenCalled();
     }

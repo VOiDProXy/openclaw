@@ -1,3 +1,4 @@
+import { isSafeRegex } from "@a2ui/web_core/v0_8";
 import { Dynamic } from "@solidjs/web";
 import {
   For,
@@ -57,19 +58,21 @@ function writeValue(props, binding, value) {
 function InputField(props) {
   const inputId = createUniqueId();
   const value = createMemo(() => props.value ?? "");
+  const pattern = createMemo(() =>
+    props.pattern && isSafeRegex(props.pattern) ? props.pattern : undefined,
+  );
   return (
     <section class="field">
       <Show when={props.label}>
         <label for={inputId}>{props.label}</label>
       </Show>
-      <Dynamic
-        component={props.type === "textarea" ? "textarea" : "input"}
+      <input
         id={inputId}
         name="data"
         autocomplete="off"
-        type={props.type === "textarea" ? undefined : props.type}
+        type={props.type}
         prop:value={value()}
-        pattern={props.pattern}
+        pattern={pattern()}
         placeholder={props.placeholder}
         onInput={(event) =>
           props.onInput(event.currentTarget.value, event.currentTarget.checkValidity(), event)
@@ -311,7 +314,8 @@ function CatalogElement(props) {
       id={props.node.id}
       slot={props.node.slotName}
       usage-hint={data().usageHint}
-      style={{ flex: props.node.weight ?? "initial" }}
+      direction={type() === "List" ? (data().direction ?? "vertical") : undefined}
+      style={{ "--weight": props.node.weight ?? "initial" }}
     >
       <Switch>
         <Match when={type() === "Text"}>
@@ -410,9 +414,8 @@ function CatalogElement(props) {
             pattern={data().validationRegexp}
             placeholder="Please enter a value"
             type={
-              { longText: "textarea", obscured: "password", number: "number", date: "date" }[
-                data().textFieldType
-              ] ?? "text"
+              { obscured: "password", number: "number", date: "date" }[data().textFieldType] ??
+              "text"
             }
             onInput={(next, valid, event) => {
               event.currentTarget.dispatchEvent(
@@ -455,13 +458,15 @@ function CatalogElement(props) {
                 writeValue(props, data().value, event.currentTarget.valueAsNumber)
               }
             />
+            <output for={fieldId}>{value("value") ?? 0}</output>
           </section>
         </Match>
         <Match when={type() === "Divider"}>
           <hr
             style={{
-              width: data().axis === "vertical" ? "1px" : "100%",
-              height: data().axis === "vertical" ? "100%" : "1px",
+              width: data().axis === "vertical" ? `${data().thickness ?? 1}px` : "100%",
+              height: data().axis === "vertical" ? "100%" : `${data().thickness ?? 1}px`,
+              "background-color": data().color,
             }}
           />
         </Match>
@@ -481,8 +486,10 @@ function CatalogElement(props) {
 
 export const catalogStyles = `
 openclaw-a2ui-host a2ui-surface { display:flex; flex-direction:column; gap:16px; min-width:0; }
-openclaw-a2ui-host :is(a2ui-text,a2ui-image,a2ui-icon,a2ui-video,a2ui-audioplayer,a2ui-row,a2ui-column,a2ui-list,a2ui-card,a2ui-tabs,a2ui-divider,a2ui-modal,a2ui-button,a2ui-checkbox,a2ui-textfield,a2ui-datetimeinput,a2ui-multiplechoice,a2ui-slider) { display:block; min-width:0; box-sizing:border-box; }
+openclaw-a2ui-host :is(a2ui-text,a2ui-image,a2ui-icon,a2ui-video,a2ui-audioplayer,a2ui-row,a2ui-column,a2ui-list,a2ui-card,a2ui-tabs,a2ui-divider,a2ui-modal,a2ui-button,a2ui-checkbox,a2ui-textfield,a2ui-datetimeinput,a2ui-multiplechoice,a2ui-slider) { display:block; min-width:0; box-sizing:border-box; flex:var(--weight); }
 openclaw-a2ui-host :is(a2ui-row,a2ui-column,a2ui-list) > section { gap:10px; min-width:0; }
+openclaw-a2ui-host a2ui-list[direction="horizontal"] > section { max-width:100%; overflow-x:auto; overflow-y:hidden; scrollbar-width:none; }
+openclaw-a2ui-host a2ui-list[direction="horizontal"] > section > * { flex:1 0 fit-content; max-width:min(80%,400px); }
 openclaw-a2ui-host a2ui-card > section { background:linear-gradient(180deg,rgba(255,255,255,.06),rgba(255,255,255,.03)); border:1px solid rgba(255,255,255,.09); border-radius:14px; padding:14px; box-shadow:0 10px 30px rgba(0,0,0,.35); }
 openclaw-a2ui-host a2ui-button > button { background:linear-gradient(135deg,#22c55e 0%,#06b6d4 100%); border:0; border-radius:12px; padding:10px 14px; color:#071016; font-weight:650; cursor:pointer; box-shadow:0 10px 25px rgba(6,182,212,.18); }
 openclaw-a2ui-host button { font:inherit; }
@@ -493,10 +500,10 @@ openclaw-a2ui-host a2ui-text .caption { opacity:.8; }
 openclaw-a2ui-host a2ui-image img { display:block; width:100%; max-width:100%; border-radius:12px; }
 openclaw-a2ui-host :is(video,audio) { max-width:100%; }
 openclaw-a2ui-host .field { display:grid; gap:6px; }
-openclaw-a2ui-host .field :is(input,textarea) { box-sizing:border-box; width:100%; font:inherit; }
+openclaw-a2ui-host .field input { box-sizing:border-box; width:100%; font:inherit; }
 openclaw-a2ui-host .field input:invalid { outline-color:var(--danger,#f87171); }
 openclaw-a2ui-host .checkbox-field { display:flex; gap:6px; align-items:center; }
-openclaw-a2ui-host a2ui-divider hr { border:0; background:currentColor; opacity:.25; }
+openclaw-a2ui-host a2ui-divider hr { border:0; background:#ccc; opacity:.25; }
 openclaw-a2ui-host a2ui-tabs .controls { display:flex; gap:6px; margin-bottom:10px; }
 openclaw-a2ui-host a2ui-tabs [role=tab][aria-selected=true] { font-weight:700; }
 openclaw-a2ui-host a2ui-modal dialog { padding:24px; border:0; background:transparent; color:inherit; max-width:100vw; max-height:100vh; }

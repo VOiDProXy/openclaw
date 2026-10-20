@@ -3,7 +3,7 @@ import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 
-export type GrokBotRosterAgent = {
+type GrokBotRosterAgent = {
   id: string;
   name: string;
   title?: string;

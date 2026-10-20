@@ -1,6 +1,6 @@
 import type { GrokBotRecipe } from "./recipe.js";
 
-export type GrokSourceKind = "local" | "snapshot" | "recipe" | "url" | "live";
+type GrokSourceKind = "local" | "snapshot" | "recipe" | "url" | "live";
 
 export type GrokSourceSection<T> = {
   status: "complete" | "partial" | "unavailable";
@@ -20,7 +20,7 @@ export type GrokCredentialSelector = {
   path?: string[];
 };
 
-export type GrokSourceAutomation = {
+type GrokSourceAutomation = {
   id: string;
   name: string;
   record: Record<string, unknown>;

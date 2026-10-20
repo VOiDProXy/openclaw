@@ -1,5 +1,5 @@
 import type { MigrationProviderContext } from "openclaw/plugin-sdk/plugin-entry";
-import { describe, expect, it } from "vitest";
+import { assert, describe, expect, it } from "vitest";
 import { planGrokAutomations } from "./automations.js";
 import type { GrokSourceInventory } from "./source/types.js";
 
@@ -49,7 +49,10 @@ const cron = {
 describe("Grok automation migration", () => {
   it("preserves explicit timing, timezone, target and disabled state with stable retry identity", async () => {
     const source = inventory(cron);
+    const automation = source.agents.value[0]?.automations.value[0];
+    assert(automation, "Expected the source automation fixture");
     const [item] = await planGrokAutomations({ inventory: source, ctx, agentTargets });
+    assert(item, "Expected the translated automation");
     expect(item).toMatchObject({
       kind: "automation",
       action: "create-cron",
@@ -66,10 +69,11 @@ describe("Grok automation migration", () => {
         },
       },
     });
-    source.agents.value[0].automations.value[0].name = "Renamed report";
+    automation.name = "Renamed report";
     const [renamed] = await planGrokAutomations({ inventory: source, ctx, agentTargets });
+    assert(renamed, "Expected the renamed automation");
     expect(renamed.id).toBe(item.id);
-    source.agents.value[0].automations.value[0].record.isEnabled = true;
+    automation.record.isEnabled = true;
     const [enabledSource, review] = await planGrokAutomations({
       inventory: source,
       ctx,
@@ -87,7 +91,9 @@ describe("Grok automation migration", () => {
 
   it("keeps unsupported triggers, unresolved plugin dependencies, and unknown timezone out of the scheduler", async () => {
     const pluginDependent = inventory(cron);
-    pluginDependent.agents.value[0].plugins.value.push({
+    const agent = pluginDependent.agents.value[0];
+    assert(agent, "Expected the source agent fixture");
+    agent.plugins.value.push({
       name: "Grok mail",
       pluginId: "cloud-mail",
     });

@@ -1,4 +1,4 @@
-export const MAX_GROK_BOT_RECIPE_BYTES = 25 * 1024 * 1024;
+const MAX_GROK_BOT_RECIPE_BYTES = 25 * 1024 * 1024;
 
 export type GrokBotImportWarning = { code: string; message: string };
 

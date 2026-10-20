@@ -10,7 +10,9 @@ async function fixture() {
     rootDir: resolvePreferredOpenClawTmpDir(),
     prefix: "grok-migration-provider-",
   });
-  onTestFinished(() => temp.cleanup());
+  onTestFinished(async () => {
+    await temp.cleanup();
+  });
   const source = path.join(temp.dir, "source");
   const workspace = path.join(temp.dir, "workspace");
   await fs.mkdir(source);

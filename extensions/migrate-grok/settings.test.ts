@@ -1,5 +1,5 @@
 import type { MigrationProviderContext } from "openclaw/plugin-sdk/plugin-entry";
-import { describe, expect, it } from "vitest";
+import { assert, describe, expect, it } from "vitest";
 import { applyGrokSettingsItem, planGrokSettings } from "./settings.js";
 import type { GrokSourceInventory } from "./source/types.js";
 
@@ -65,6 +65,7 @@ describe("Grok settings migration", () => {
       },
     };
     const [same] = planGrokSettings({ inventory: settings, ctx: sameContext });
+    assert(same, "Expected the timezone migration item");
     expect(same.status).toBe("planned");
     expect(await applyGrokSettingsItem(sameContext, same)).toMatchObject({ status: "migrated" });
   });

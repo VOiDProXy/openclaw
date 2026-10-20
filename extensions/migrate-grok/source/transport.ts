@@ -32,7 +32,7 @@ export function parseGrokBotUrl(value: string): GrokBotUrl {
   throw new Error("Expected a Grok Bot share or marketplace URL on https://x.ai/bot/.");
 }
 
-export function shareIdFromMarketplaceHtml(html: string): string {
+function shareIdFromMarketplaceHtml(html: string): string {
   // The page's bot metadata owns this link. Generic /bot/ anchors also include
   // navigation such as /bot/guides and /bot/use-cases, which are not templates.
   const metadata = html.replaceAll('\\"', '"');

@@ -26,7 +26,6 @@ import { parseGrokBotUrl, readGrokResponse, resolveGrokShareId } from "./transpo
 import type { GrokSourceDetection, GrokSourceInventory, GrokSourceOptions } from "./types.js";
 
 export type * from "./types.js";
-export { renderGrokBotAvatar } from "./avatar.js";
 export { readGrokSecrets } from "./secrets.js";
 
 function home(options: GrokSourceOptions): string {

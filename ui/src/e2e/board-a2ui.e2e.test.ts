@@ -290,6 +290,36 @@ suite.define(() => {
     ]);
     await page.getByText("Calendar refreshed", { exact: true }).waitFor();
     expect(await page.getByLabel("Date", { exact: true }).inputValue()).toBe("2026-10-21");
+    await applyMessages(page.mainFrame(), [
+      updateComponents("v0.9", [
+        { id: "root", component: "Column", children: ["weighted", "action"] },
+        { id: "weighted", component: "Row", children: ["left", "right"] },
+        { ...textComponent("v0.9", "left", "Left"), weight: 1 },
+        { ...textComponent("v0.9", "right", "Right"), weight: 2 },
+        refreshButton(),
+        textComponent("v0.9", "action-label", "Themed action"),
+      ]),
+    ]);
+    await expect
+      .poll(async () => {
+        const left = await page.locator("#left .a2ui-text").boundingBox();
+        const right = await page.locator("#right .a2ui-text").boundingBox();
+        return left && right ? right.width / left.width : 0;
+      })
+      .toBeCloseTo(2, 2);
+    await page.emulateMedia({ colorScheme: "light" });
+    const themedAction = page.getByRole("button", { name: "Themed action" });
+    await themedAction.hover();
+    expect(
+      await themedAction.evaluate((button) => {
+        const sample = document.createElement("span");
+        sample.style.backgroundColor = "color-mix(in oklab, #197a55 85%, black)";
+        document.body.append(sample);
+        const expected = getComputedStyle(sample).backgroundColor;
+        sample.remove();
+        return getComputedStyle(button).backgroundColor === expected;
+      }),
+    ).toBe(true);
     await page.evaluate(() => Reflect.get(globalThis, "openclawA2UI").reset());
     await expect.poll(() => page.locator("a2ui-surface").count()).toBe(0);
     expect(errors).toEqual([]);

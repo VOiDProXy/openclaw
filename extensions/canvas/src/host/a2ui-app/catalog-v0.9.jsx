@@ -5,6 +5,7 @@ import {
   BASIC_COMPONENTS,
   BASIC_FUNCTIONS,
   BasicCatalogThemeSchema,
+  computeColorVariant,
   injectBasicCatalogStyles,
 } from "@a2ui/web_core/v0_9/basic_catalog";
 import { Dynamic } from "@solidjs/web";
@@ -20,7 +21,7 @@ import {
   createUniqueId,
   onSettled,
 } from "solid-js";
-import { CatalogDialog, catalogInputValue } from "./catalog-primitives.jsx";
+import { CatalogDialog, catalogAlignment, catalogInputValue } from "./catalog-primitives.jsx";
 import { catalogStyles } from "./catalog-v0.9-styles.js";
 
 // Only the headless schemas/functions reach the bundle. No universal element is registered.
@@ -59,14 +60,6 @@ const markdown = new Marked({
   },
 });
 const unwrap = (value) => (value instanceof ResolvedBinding ? value.value : value);
-const align = (value) =>
-  ({
-    start: "flex-start",
-    end: "flex-end",
-    spaceAround: "space-around",
-    spaceBetween: "space-between",
-    spaceEvenly: "space-evenly",
-  })[value] ?? value;
 
 // Bridge the processor's synchronous signal owner without replacing its implementation.
 export function observeValue(read) {
@@ -120,7 +113,7 @@ function Text(props) {
     }),
   );
   return (
-    <span class={["a2ui-text", variant()]}>
+    <span class={["a2ui-text", variant()]} style={{ flex: props.value("weight") }}>
       <Show when={isHeading() || variant() === "caption"} fallback={<span innerHTML={html()} />}>
         <Dynamic component={isHeading() ? variant() : "em"}>{text()}</Dynamic>
       </Show>
@@ -396,9 +389,21 @@ function CatalogElement(props) {
       }
       style={{
         flex: data().weight,
-        "justify-content": align(data().justify),
-        "align-items": align(data().align),
+        "justify-content": catalogAlignment(data().justify),
+        "align-items": catalogAlignment(data().align),
         "--a2ui-color-primary": primary(),
+        "--a2ui-color-primary-light": primary()
+          ? computeColorVariant("light", { colorVar: "--a2ui-color-primary" })
+          : undefined,
+        "--a2ui-color-primary-dark": primary()
+          ? computeColorVariant("dark", { colorVar: "--a2ui-color-primary" })
+          : undefined,
+        "--a2ui-color-primary-hover": primary()
+          ? computeColorVariant("hover", {
+              darkVar: "--a2ui-color-primary-dark",
+              lightVar: "--a2ui-color-primary-light",
+            })
+          : undefined,
       }}
     >
       <Switch>

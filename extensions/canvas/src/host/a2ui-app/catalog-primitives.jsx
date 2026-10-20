@@ -1,5 +1,14 @@
 import { createEffect, createMemo, onSettled } from "solid-js";
 
+export const catalogAlignment = (value) =>
+  ({
+    start: "flex-start",
+    end: "flex-end",
+    spaceAround: "space-around",
+    spaceBetween: "space-between",
+    spaceEvenly: "space-evenly",
+  })[value] ?? value;
+
 /** Commit-on-change fields keep their native draft when unrelated props change. */
 export function catalogInputValue(read) {
   let field;

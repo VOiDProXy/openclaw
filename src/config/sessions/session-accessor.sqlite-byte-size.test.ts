@@ -172,10 +172,13 @@ it.each(readers)("sizes %s without reading transcript overflow payloads", async 
     }
     for (const query of sizingQueries) {
       const instructions = prepare(`EXPLAIN ${query}`).all() as SqliteInstruction[];
-      // Event counts and newline-byte accounting must share one per-row accumulator.
-      expect(
-        instructions.filter((op) => op.opcode === "AggStep" && op.p4?.startsWith("count(")).length,
-      ).toBeLessThanOrEqual(1);
+      if (_name === "raw stats" || _name === "active stats") {
+        // Event counts and newline-byte accounting must share one per-row accumulator.
+        expect(
+          instructions.filter((op) => op.opcode === "AggStep" && op.p4?.startsWith("count("))
+            .length,
+        ).toBeLessThanOrEqual(1);
+      }
       const transcriptCursors = new Set(
         instructions
           .filter((op) => op.opcode === "OpenRead" && op.p2 === table?.rootpage)

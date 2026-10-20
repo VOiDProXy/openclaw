@@ -135,11 +135,9 @@ export function registerQueuedRegistrationClaimCases() {
       expect(launch).toHaveBeenCalledOnce();
       expect(cleanup).toHaveBeenCalledOnce();
       expect(rollback).toHaveBeenCalledOnce();
-      expect(f.current()).toMatchObject({
-        execution: {
-          status: "terminal",
-          outcome: { status: "error", error: "error" },
-        },
+      expect(f.current().execution).toMatchObject({
+        status: "terminal",
+        outcome: { status: "error", error: "error" },
       });
     });
   });

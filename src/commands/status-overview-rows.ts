@@ -40,6 +40,7 @@ type StatusDegradationSummary = Pick<
   | "degradedPlugins"
   | "startupMigrationWarning"
   | "startupRecoveryWarning"
+  | "modelReasoningWarning"
   | "installationReplacementWarning"
   | "utilityModelWarnings"
   | "childRuntime"
@@ -59,6 +60,7 @@ function buildStatusDegradationRows(
   };
   addWarning("Startup migrations", summary.startupMigrationWarning);
   addWarning("Session recovery", summary.startupRecoveryWarning);
+  addWarning("Model reasoning", summary.modelReasoningWarning);
   addWarning(
     "Gateway runtime",
     summary.childRuntime ? formatMissingChildRuntimeWarning(summary.childRuntime) : undefined,

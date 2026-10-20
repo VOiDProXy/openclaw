@@ -2,6 +2,7 @@ import { createEffect, createMemo, Show } from "solid-js";
 import type { ComposerQuestions } from "./chat-composer-questions.ts";
 import { commitComposerDraft } from "./chat-composer-state.ts";
 import type { QuestionPanelProps } from "./chat-question-card.ts";
+import "./chat-question-card-view.tsx";
 
 export function ComposerQuestionDock(props: { panel: QuestionPanelProps | null }) {
   return (

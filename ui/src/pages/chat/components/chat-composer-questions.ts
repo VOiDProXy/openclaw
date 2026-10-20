@@ -20,7 +20,11 @@ type QuestionInput = ChatComposerProps &
   Partial<
     Pick<
       ChatProps,
-      "asyncQuestionStorage" | "onAsyncQuestionSubmit" | "getQueue" | "transcriptVisible"
+      | "asyncQuestionStorage"
+      | "onAsyncQuestionSubmit"
+      | "getQueue"
+      | "transcriptVisible"
+      | "connectionEpoch"
     >
   >;
 

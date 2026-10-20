@@ -15,12 +15,13 @@ import {
 import { mountSolid } from "../../test-helpers/mount-solid.ts";
 import { createSolidApplicationContextProvider } from "../../test-helpers/solid-application-context.tsx";
 import { flush } from "../../test-helpers/solid-settle.ts";
+import type { ChatProps } from "./chat-view-frame.ts";
 import { createComposerQuestions } from "./components/chat-composer-questions.ts";
 import type { ChatComposerProps } from "./components/chat-composer-types.ts";
 import { ChatComposer, resetChatComposerState } from "./components/chat-composer.tsx";
 
-type ComposerProps = ChatComposerProps;
-type NativeComposerProps = ChatComposerProps;
+type ComposerProps = ChatComposerProps &
+  Pick<ChatProps, "connectionEpoch" | "onAsyncQuestionSubmit">;
 
 const providers = new WeakMap<
   HTMLElement,
@@ -33,7 +34,7 @@ export function composerContextWrapper(container: HTMLElement) {
 
 const composers = new Map<
   HTMLElement,
-  { update: (props: NativeComposerProps) => void; unmount: () => void }
+  { update: (props: ComposerProps) => void; unmount: () => void }
 >();
 
 export function renderComposerInto(container: HTMLElement, props: ComposerProps) {
@@ -50,7 +51,7 @@ export function renderComposerInto(container: HTMLElement, props: ComposerProps)
         owner.getPendingAttachmentReads?.() ?? owner.pendingAttachmentReads ?? 0,
       goalDraftMode: owner.goalDraftMode,
     }));
-    const bind = (): NativeComposerProps => ({
+    const bind = (): ComposerProps => ({
       ...owner,
       draftSource: owner.draftSource ?? draftSource,
       onGoalDraftModeChange: (mode) => {
@@ -73,7 +74,7 @@ export function renderComposerInto(container: HTMLElement, props: ComposerProps)
         }
       },
     });
-    const [current, update] = createSignal<NativeComposerProps>(bind(), { ownedWrite: true });
+    const [current, update] = createSignal<ComposerProps>(bind(), { ownedWrite: true });
     const view = mountSolid(
       () => {
         const questions = createComposerQuestions(props.paneId, current);

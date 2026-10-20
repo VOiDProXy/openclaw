@@ -55,8 +55,10 @@ function message(page: NewSessionElement): string {
   return page.querySelector<HTMLTextAreaElement>(".new-session-page__message")?.value ?? "";
 }
 
-afterEach(() => {
+afterEach(async () => {
   document.querySelectorAll("openclaw-new-session-page").forEach((element) => element.remove());
+  // Intent handlers preload the composer even when the test never submits.
+  await vi.dynamicImportSettled();
   vi.unstubAllGlobals();
   vi.restoreAllMocks();
   sessionStorage.clear();

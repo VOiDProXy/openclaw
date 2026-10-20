@@ -1,36 +1,58 @@
-import { createSignal, flush, Show, type Setter } from "solid-js";
+import { createMemo, createSignal, flush, Show } from "solid-js";
 import { expect, it, vi } from "vitest";
 import { mountSolid } from "../../test-helpers/mount-solid.ts";
 import { liveValue } from "./live-value.ts";
 
-it("keeps input selection when a controlled value is already current", () => {
+it("commits controlled values without untracked reads and preserves input selection", () => {
   const [value, setValue] = createSignal("draft");
-  const view = mountSolid(() => <textarea ref={liveValue(value)} />);
-  const input = view.container.querySelector("textarea")!;
-  input.setSelectionRange(2, 2);
+  const [identity, setIdentity] = createSignal(1);
+  const warnings = vi.spyOn(console, "warn").mockImplementation(() => {});
   const setter = vi.spyOn(HTMLTextAreaElement.prototype, "value", "set");
-  setValue("draft");
-  flush();
-  expect(setter).not.toHaveBeenCalled();
-  expect(input.selectionStart).toBe(2);
-  setValue("replaced");
-  flush();
-  expect(input.value).toBe("replaced");
-  setter.mockRestore();
+  try {
+    function ControlledTextarea() {
+      const committedValue = createMemo(value);
+      const valueRef = liveValue(committedValue);
+      return (
+        <Show when={identity()} keyed>
+          {(_identity) => <textarea ref={valueRef} />}
+        </Show>
+      );
+    }
+    const view = mountSolid(() => <ControlledTextarea />);
+    flush();
+    const input = view.container.querySelector("textarea")!;
+    expect(input.value).toBe("draft");
+    input.setSelectionRange(2, 2);
+    setter.mockClear();
+    setValue("draft");
+    flush();
+    expect(setter).not.toHaveBeenCalled();
+    expect(input.selectionStart).toBe(2);
+    setValue("replaced");
+    flush();
+    expect(input.value).toBe("replaced");
+    setIdentity(2);
+    flush();
+    const replacement = view.container.querySelector("textarea")!;
+    expect(replacement).not.toBe(input);
+    expect(replacement.value).toBe("replaced");
+    expect(
+      warnings.mock.calls.filter(([message]) => String(message).includes("STRICT_READ_UNTRACKED")),
+    ).toEqual([]);
+  } finally {
+    setter.mockRestore();
+    warnings.mockRestore();
+  }
 });
 
-it.each(["initial", "late-value", "late-ref"] as const)(
-  "applies prepared values on %s input and keeps equal updates stable",
+it.each(["late-value", "late-ref"] as const)(
+  "applies a prepared value when a conditional input first appears (%s)",
   (mode) => {
-    let publish!: Setter<{ value: string } | undefined>;
-    let reveal!: Setter<boolean>;
+    const [entry, setEntry] = createSignal<{ value: string } | undefined>(
+      mode === "late-value" ? undefined : { value: "initial" },
+    );
+    const [shown, setShown] = createSignal(mode !== "late-ref");
     const view = mountSolid(() => {
-      const [entry, setEntry] = createSignal<{ value: string } | undefined>(
-        mode === "late-value" ? undefined : { value: "initial" },
-      );
-      const [shown, setShown] = createSignal(mode !== "late-ref");
-      publish = setEntry;
-      reveal = setShown;
       if (mode === "late-ref") {
         const bind = liveValue(() => entry()!.value);
         return <Show when={shown()}>{(_shown) => <input ref={bind} />}</Show>;
@@ -39,25 +61,21 @@ it.each(["initial", "late-value", "late-ref"] as const)(
         <Show when={entry()}>{(current) => <input ref={liveValue(() => current().value)} />}</Show>
       );
     });
-    if (mode === "initial") {
-      expect(view.container.querySelector("input")?.value).toBe("initial");
-    } else {
-      expect(view.container.querySelector("input")).toBeNull();
-    }
-    publish({ value: "ready" });
+    expect(view.container.querySelector("input")).toBeNull();
+    setEntry({ value: "ready" });
     flush();
-    reveal(true);
+    setShown(true);
     flush();
     const input = view.container.querySelector("input")!;
     expect(input.value).toBe("ready");
     input.focus();
     input.setSelectionRange(2, 2);
-    publish({ value: "ready" });
+    setEntry({ value: "ready" });
     flush();
     expect(view.container.querySelector("input")).toBe(input);
     expect(document.activeElement).toBe(input);
     expect(input.selectionStart).toBe(2);
-    publish({ value: "" });
+    setEntry({ value: "" });
     flush();
     expect(input.value).toBe("");
   },

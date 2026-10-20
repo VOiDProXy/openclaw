@@ -1,12 +1,12 @@
 import { createEffect } from "@solidjs/signals";
 
-/** Apply prepared owner values without rewriting an equal native value or selection. */
+/** Apply committed values to native fields while preserving unchanged text selection. */
 export function liveValue<T extends HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>(
   value: () => string,
   onValueChange?: (field: T) => void,
 ) {
   let field: T | undefined;
-  let preparedValue: string | undefined;
+  let committedValue: string | undefined;
   const writeValue = (next: string) => {
     if (field && field.value !== next) {
       field.value = next;
@@ -14,14 +14,13 @@ export function liveValue<T extends HTMLInputElement | HTMLSelectElement | HTMLT
     }
   };
   createEffect(value, (next) => {
-    preparedValue = next;
+    committedValue = next;
     writeValue(next);
   });
   return (element: T) => {
     field = element;
-    // Refs run unowned and can precede the frame that first mounts a conditional field.
-    if (preparedValue !== undefined) {
-      writeValue(preparedValue);
+    if (committedValue !== undefined) {
+      writeValue(committedValue);
     }
   };
 }

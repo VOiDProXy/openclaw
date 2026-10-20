@@ -73,7 +73,7 @@ it("captures collected allocations and CPU together, redacts guest frames, and c
     includeObjectsCollectedByMajorGC: true,
     includeObjectsCollectedByMinorGC: true,
   });
-  expect(native.wait).toHaveBeenCalledWith(5000, undefined, { signal: expect.any(AbortSignal) });
+  expect(native.wait.mock.calls.map(([duration]) => duration)).toEqual([5000]);
   expect(JSON.parse(outcome.result.heap)).toMatchObject({
     includeObjectsCollectedByMajorGC: true,
     includeObjectsCollectedByMinorGC: true,

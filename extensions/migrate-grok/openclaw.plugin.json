@@ -1,0 +1,9 @@
+{
+  "id": "migrate-grok",
+  "categories": ["integrations"],
+  "activation": { "onStartup": false },
+  "name": "Grok Bot Migration",
+  "description": "Imports Grok Bot agents, settings, memory, skills, automations, MCP servers, and supported credentials.",
+  "contracts": { "migrationProviders": ["grok"] },
+  "configSchema": { "type": "object", "additionalProperties": false, "properties": {} }
+}

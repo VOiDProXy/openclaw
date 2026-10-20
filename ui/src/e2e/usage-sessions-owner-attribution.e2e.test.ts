@@ -1,7 +1,9 @@
 import path from "node:path";
 import type { Page } from "playwright";
 import { expect, it, vi } from "vitest";
+import { createZeroUsageFixture } from "../../../src/agents/test-helpers/usage-fixtures.ts";
 import { setRuntimeConfigSnapshot } from "../../../src/config/runtime-snapshot.js";
+import { createExactAssistantMessage } from "../../../src/config/sessions/transcript-message.test-support.ts";
 import type { OpenClawConfig } from "../../../src/config/types.openclaw.js";
 import type { GatewayServer } from "../../../src/gateway/server-public.ts";
 import { resetLogger, setLoggerOverride } from "../../../src/logging/logger.ts";
@@ -231,21 +233,14 @@ suite.define(() => {
                 .getByRole("button", { name: `Switch to 127.0.0.1:${port}`, exact: true })
                 .click();
 
-              const otherRow = page.locator(
-                `.session-bar-row[title="agent:opus:${PROOF_SESSION_ID}"]`,
-              );
-              // A rendered usage row proves the handshake and requested report both arrived.
-              await otherRow.waitFor();
-              await expect.poll(() => otherRow.count()).toBe(1);
-
               // The named family stays visible before its new current instance has a transcript.
-              const row = page.locator(`.session-bar-row[title="${PROOF_STORE_KEY}"]`);
-              await row.waitFor();
-              await expect.poll(() => row.count()).toBe(1);
-              for (const [ownerRow, agentId] of [
-                [row, "main"],
-                [otherRow, "opus"],
+              for (const [key, agentId] of [
+                [`agent:opus:${PROOF_SESSION_ID}`, "opus"],
+                [PROOF_STORE_KEY, "main"],
               ] as const) {
+                const ownerRow = page.locator(`.session-bar-row[title="${key}"]`);
+                await ownerRow.waitFor();
+                await expect.poll(() => ownerRow.count()).toBe(1);
                 const chip = ownerRow.getByRole("img", {
                   name: `Molty (agent:${agentId})`,
                   exact: true,
@@ -361,8 +356,7 @@ suite.define(() => {
                   agentId: "opus",
                   label: `${label} usage session`,
                 });
-                expect(created.ok).toBe(true);
-                expect(created.key).toBe(key);
+                expect(created).toMatchObject({ ok: true, key });
                 expect(created.sessionId).toBeTruthy();
                 signal.throwIfAborted();
                 await persistSessionTranscriptTurn(
@@ -378,26 +372,17 @@ suite.define(() => {
                     messages: timestamps.map((turnTimestamp, index) => ({
                       now: turnTimestamp,
                       message: {
-                        role: "assistant",
-                        content: [{ type: "text", text: `${label} reply ${index + 1}` }],
-                        api: "openai-responses",
-                        provider: "fixture",
-                        model: "usage-proof",
-                        stopReason: "stop",
+                        ...createExactAssistantMessage({
+                          text: `${label} reply ${index + 1}`,
+                          provider: "fixture",
+                          model: "usage-proof",
+                        }),
                         timestamp: turnTimestamp,
                         usage: {
+                          ...createZeroUsageFixture(),
                           input: tokens,
-                          output: 0,
-                          cacheRead: 0,
-                          cacheWrite: 0,
                           totalTokens: tokens,
-                          cost: {
-                            input: 0.01,
-                            output: 0,
-                            cacheRead: 0,
-                            cacheWrite: 0,
-                            total: 0.01,
-                          },
+                          cost: { ...createZeroUsageFixture().cost, input: 0.01, total: 0.01 },
                         },
                       },
                     })),
@@ -416,9 +401,11 @@ suite.define(() => {
               );
               await selected.click();
               const panel = page.locator(".session-detail-panel");
+              const timeline = panel.locator(".timeseries-summary");
+              const logs = panel.locator(".session-log-content");
               const readDetails = async () => ({
-                timeline: (await panel.locator(".timeseries-summary").allTextContents()).join("\n"),
-                conversation: await panel.locator(".session-log-content").allTextContents(),
+                timeline: (await timeline.allTextContents()).join("\n"),
+                conversation: await logs.allTextContents(),
               });
               await expect.poll(readDetails).toEqual({
                 timeline: expect.stringContaining("200"),
@@ -522,11 +509,9 @@ suite.define(() => {
               if (pointCount === 2) {
                 await dragTimelineRange(page, 0.25);
                 await page.mouse.up();
-                await expect
-                  .poll(() => panel.locator(".session-log-content").allTextContents())
-                  .toEqual(["Replacement reply 1"]);
+                await expect.poll(() => logs.allTextContents()).toEqual(["Replacement reply 1"]);
                 await panel.getByRole("button", { name: "Reset", exact: true }).click();
-                await expect.poll(() => panel.locator(".session-log-content").count()).toBe(2);
+                await expect.poll(() => logs.count()).toBe(2);
               }
               expect(connections).toBe(selectedConnections);
               expect(await page.locator(".community-invite-card").count()).toBe(0);
